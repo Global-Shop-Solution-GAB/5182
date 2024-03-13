@@ -1,0 +1,582 @@
+Program.Sub.ScreenSU.Start
+Gui.Form_P21_CleanUp..Create
+Gui.Form_P21_CleanUp..Caption("P21 Table Maintenance")
+Gui.Form_P21_CleanUp..Size(15360,10695)
+Gui.Form_P21_CleanUp..MinX(0)
+Gui.Form_P21_CleanUp..MinY(0)
+Gui.Form_P21_CleanUp..Position(0,0)
+Gui.Form_P21_CleanUp..BackColor(-2147483633)
+Gui.Form_P21_CleanUp..MousePointer(0)
+Gui.Form_P21_CleanUp..Event(UnLoad,Form_P21_CleanUp_UnLoad)
+Gui.Form_P21_CleanUp.chkShowAll.Create(CheckBox)
+Gui.Form_P21_CleanUp.chkShowAll.Size(1950,360)
+Gui.Form_P21_CleanUp.chkShowAll.Position(105,150)
+Gui.Form_P21_CleanUp.chkShowAll.Caption("Show All Records")
+Gui.Form_P21_CleanUp.chkShowAll.Event(Click,chkShowAll_Click)
+Gui.Form_P21_CleanUp.cmdExport.Create(Button)
+Gui.Form_P21_CleanUp.cmdExport.Size(1530,375)
+Gui.Form_P21_CleanUp.cmdExport.Position(2115,150)
+Gui.Form_P21_CleanUp.cmdExport.Caption("Export To Excel")
+Gui.Form_P21_CleanUp.GsGridControlP21.Create(GsGridControl)
+Gui.Form_P21_CleanUp.GsGridControlP21.Size(15000,9180)
+Gui.Form_P21_CleanUp.GsGridControlP21.Position(105,600)
+Gui.Form_P21_CleanUp.cmdDelete.Create(Button)
+Gui.Form_P21_CleanUp.cmdDelete.Size(1530,375)
+Gui.Form_P21_CleanUp.cmdDelete.Position(105,9885)
+Gui.Form_P21_CleanUp.cmdDelete.Caption("Delete Selected")
+Gui.Form_P21_CleanUp.cmdDelete.Event(Click,cmdDelete_Click)
+Gui.Form_P21_CleanUp.cmdRefresh.Create(Button)
+Gui.Form_P21_CleanUp.cmdRefresh.Size(855,375)
+Gui.Form_P21_CleanUp.cmdRefresh.Position(3840,150)
+Gui.Form_P21_CleanUp.cmdRefresh.Caption("REFRESH")
+Gui.Form_P21_CleanUp.cmdRefresh.Event(Click,cmdRefresh_Click)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+V.Global.bHook.Declare(Boolean,False)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+
+	F.Intrinsic.Control.SelectCase(V.Caller.Hook)
+		F.Intrinsic.Control.Case(16504)
+			
+			'If WO is closed update flag in custom table
+			'V.Passed.000012 - WO_CLOSED Flag
+			F.Intrinsic.Control.If(V.Passed.000012.UCase,=,"Y")
+				F.Intrinsic.Control.CallSub(Update_WO_Flag,"Screen","JBS0052")
+			F.Intrinsic.Control.EndIf
+			
+			V.Global.bHook.Set(True)
+			
+			F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+		
+		'Post On-Line Update Hook
+		F.Intrinsic.Control.Case(38130)
+			'getting a list of closed work orders and updating P21 PO Closed flag in custom table.  This will account for when a job is closed from the GUI.
+			V.Global.bHook.Set(True)
+
+			F.Intrinsic.Control.CallSub(Update_WO_Flag,"Screen","ON-LINE")
+			
+			'close workers that have been sent to a queue by GCG_5182_CLOSE_WO_GUI
+			F.Intrinsic.Control.CallSub(Close_WO)
+			
+			F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+			
+		F.Intrinsic.Control.CaseElse
+			'GridView that allows user to clean up Custom Table
+			'Grid Will show records from Custom table where WO = Closed and P21 PO = Closed
+			'Check box to show all records
+			V.Global.bHook.Set(False)
+			F.Intrinsic.Control.CallSub(Get_Data)
+			
+			F.Intrinsic.Control.CallSub(Set_Properties)
+			
+			F.Intrinsic.Control.CallSub(Set_Anchors)
+			
+			Gui.Form_P21_CleanUp.chkShowAll.Value(0)
+			
+			Gui.Form_P21_CleanUp..Show
+			
+	F.Intrinsic.Control.EndSelect
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+F.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Form_P21_CleanUp_UnLoad.Start
+F.Intrinsic.Control.SetErrorHandler("Form_P21_CleanUp_UnLoad_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	
+	F.Intrinsic.Control.If(V.Global.bHook,=,False)
+		f.Intrinsic.Control.CallSub(Serialize)
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.Control.End
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Form_P21_CleanUp_UnLoad_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+Program.Sub.Form_P21_CleanUp_UnLoad.End
+
+Program.Sub.chkShowAll_Click.Start
+F.Intrinsic.Control.SetErrorHandler("chkShowAll_Click_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	'Setting Dataview filter
+	F.Intrinsic.Control.If(V.Screen.Form_P21_CleanUp!chkShowAll.Value,=,0)
+		F.Data.DataView.SetFilter("P21","VP21","GSS_WO_CLOSED = True and P21_PO_CLOSED = True")
+	F.Intrinsic.Control.Else
+		F.Data.DataView.SetFilter("P21","VP21","")
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("chkShowAll_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+F.Intrinsic.Control.EndIf
+Program.Sub.chkShowAll_Click.End
+
+Program.Sub.cmdDelete_Click.Start
+F.Intrinsic.Control.SetErrorHandler("cmdDelete_Click_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.i.Declare(Long,0)
+	V.Local.sFields.Declare(String,"")
+	
+	'removing selected records
+	V.Local.sFields.Set("P21_PO@!@P21_PO*!*P21_PO_Line@!@P21_PO_Line*!*P21_Vendor@!@P21_Vendor*!*P21_Part@!@P21_Part*!*P21_Description@!@P21_Description*!*P21_Location@!@P21_Location*!*P21_Quantity@!@P21_Quantity*!*P21_Cost@!@P21_Cost*!*P21_UM@!@P21_UM*!*P21_Date_Due@!@P21_Date_Due*!*P21_Order_Date@!@P21_Order_Date*!*P21_SHP2_CustName@!@P21_SHP2_CustName*!*P21_SHP2_CustAddress@!@P21_SHP2_CustAddress*!*P21_SHP2_CustState@!@P21_SHP2_CustState*!*P21_SHP2_CustCity@!@P21_SHP2_CustCity*!*P21_SHP2_CustZip@!@P21_SHP2_CustZip*!*P21_Bill_CustName@!@P21_Bill_CustName*!*P21_Bill_CustAddress@!@P21_Bill_CustAddress*!*P21_Bill_CustState@!@P21_Bill_CustState*!*P21_Bill_CustCity@!@P21_Bill_CustCity*!*P21_Bill_CustZip@!@P21_Bill_CustZip*!*P21_SO@!@P21_SO*!*GSS_SO@!@GSS_SO*!*GSS_SO_Line@!@GSS_SO_Line*!*GSS_WO@!@GSS_WO*!*GSS_Suffix@!@GSS_Suffix*!*GSS_Status@!@GSS_Status*!*GSS_Status_Message@!@GSS_Status_Message*!*P21_Status@!@P21_Status*!*P21_Status_Message@!@P21_Status_Message*!*GSS_WO_Closed@!@GSS_WO_Closed*!*P21_PO_Closed@!@P21_PO_Closed")
+	
+	F.Data.DataView.SetFilter("P21","VP21","Selection = True")
+	
+	F.Intrinsic.Control.For(V.Local.i,V.DataView.P21!VP21.RowCount--,0,-1)
+		F.Data.DataTable.DeleteRow("P21",V.DataView.P21!VP21(V.Local.i).DataTableIndex)
+	F.Intrinsic.Control.Next(V.Local.i)
+	
+	F.ODBC.Connection!Con.OpenCompanyConnection
+	F.Intrinsic.Control.Try
+		F.Data.DataTable.SaveToDB("P21","con","GCG_5182_P21_PO_Line","P21_PO*!*P21_PO_Line*!*GSS_WO*!*GSS_Suffix",7,V.Local.sFields)
+	F.Intrinsic.Control.Catch
+		'ingnoring record level betrieve conflict 
+		F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,"21045")
+			F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+			F.Intrinsic.UI.Msgbox(V.Local.sError)
+			F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.EndTry
+	F.ODBC.Connection!Con.Close
+	
+	F.Data.DataTable.AcceptChanges("P21")
+	
+	F.Intrinsic.Control.CallSub(chkShowAll_Click)
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("cmdDelete_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+F.Intrinsic.Control.EndIf
+Program.Sub.cmdDelete_Click.End
+
+Program.Sub.Get_Data.Start
+F.Intrinsic.Control.SetErrorHandler("Get_Data_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sFields.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	
+	V.Local.sFields.Set("P21_PO, P21_PO_Line, P21_Vendor, P21_Part, P21_Description, P21_Location, P21_Quantity, P21_Cost, P21_UM, P21_Date_Due, P21_Order_Date, P21_SHP2_CustName, P21_SHP2_CustAddress, P21_SHP2_CustState, P21_SHP2_CustCity, P21_SHP2_CustZip, P21_Bill_CustName, P21_Bill_CustAddress,P21_Bill_CustState,P21_Bill_CustCity,P21_Bill_CustZip, P21_SO, GSS_SO, GSS_SO_Line, GSS_WO, GSS_Suffix, GSS_Status, GSS_Status_Message, P21_Status, P21_Status_Message, GSS_WO_Closed, P21_PO_Closed")
+	F.Intrinsic.String.Build("Select {0} From GCG_5182_P21_PO_LINE Order By P21_PO,P21_PO_Line",V.Local.sFields,V.Local.sSql)
+	
+	F.ODBC.Connection!Con.OpenCompanyConnection
+	F.Data.DataTable.CreateFromSQL("P21","con",V.Local.sSql,True)
+	F.Data.DataTable.AddColumn("P21","Selection","Boolean")
+	F.Data.DataTable.SetValue("P21",-1,"Selection",False)
+	F.ODBC.Connection!Con.Close
+	
+	F.Data.DataView.Create("P21","VP21",22,"GSS_WO_CLOSED = True and P21_PO_CLOSED = True","")
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Get_Data_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+F.Intrinsic.Control.EndIf
+Program.Sub.Get_Data.End
+
+Program.Sub.Set_Properties.Start
+F.Intrinsic.Control.SetErrorHandler("Set_Properties_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sFields.Declare(String,"")
+	V.Local.sTemp.Declare(String,"")
+	V.Local.i.Declare(Long,0)
+	
+	Gui.Form_P21_CleanUp..ContextMenuCreate("CheckRecord")
+	'adding the menu items
+	Gui.Form_P21_CleanUp..ContextMenuAddItem("CheckRecord","Item 0",0)
+	Gui.Form_P21_CleanUp..ContextMenuAddItem("CheckRecord","Item 1",0)
+	
+	Gui.Form_P21_CleanUp..ContextMenuSetItemText("CheckRecord","Item 0","Check Selected")
+	Gui.Form_P21_CleanUp..ContextMenuSetItemText("CheckRecord","Item 1","UnCheck Selected")
+	
+	Gui.Form_P21_CleanUp..ContextMenuSetItemEventHandler("CheckRecord","Item 0",MenuClick)
+	Gui.Form_P21_CleanUp..ContextMenuSetItemEventHandler("CheckRecord","Item 1",MenuClick)
+	
+	Gui.Form_P21_CleanUp.GsGridControlP21.ContextMenuAttach("CheckRecord")
+	
+	Gui.Form_P21_CleanUp.GsGridControlP21.AddGridviewFromDataview("GP21","P21","VP21")
+	
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetGridViewProperty("GP21","AllowSort",True)
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetGridViewProperty("GP21","AllowFilter",True)
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetGridViewProperty("GP21","Showgrouppanel",True)
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetGridViewProperty("GP21","AllowColumnResizing",True)
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetGridViewProperty("GP21","Enableappearanceoddrow",True)
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetGridViewProperty("GP21","OptionsViewShowAutoFilterRow",True)
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetGridViewProperty("GP21","OptionsFilterUseNewCustomFilterDialog",True)
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetGridViewProperty("GP21","OptionsViewColumnAutoWidth",True)
+
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21","Selection","MaxWidth",30)
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21","Selection","Caption"," ")
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21","Selection","ReadOnly",False)
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21","Selection","AllowEdit",True)
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21","Selection","Fixed","Left")
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21","Selection","HeaderBackColor","Green")
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21","Selection","HeaderForeColor","White")
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21","Selection","Visible",True)
+	
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21","P21_Date_Due","DisplayCustomDatetime","d")
+	Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21","P21_Order_Date","DisplayCustomDatetime","d")
+	
+	V.Local.sFields.Set("P21_PO, P21_PO_Line, P21_Vendor, P21_Part, P21_Description, P21_Location, P21_Quantity, P21_Cost, P21_UM, P21_Date_Due, P21_Order_Date, P21_SHP2_CustName, P21_SHP2_CustAddress, P21_SHP2_CustState, P21_SHP2_CustCity, P21_SHP2_CustZip, P21_Bill_CustName, P21_Bill_CustAddress,P21_Bill_CustState,P21_Bill_CustCity,P21_Bill_CustZip, P21_SO, GSS_SO, GSS_SO_Line, GSS_WO, GSS_Suffix, GSS_Status, GSS_Status_Message, P21_Status, P21_Status_Message, GSS_WO_Closed, P21_PO_Closed")
+	
+	F.Intrinsic.String.Split(V.Local.sFields,",",V.Local.sFields)
+	
+	F.Intrinsic.Control.For(V.Local.i,0,V.Local.sFields.UBound,1)
+		F.Intrinsic.String.Replace(V.Local.sFields(V.Local.i).Trim,"_"," ",V.Local.sTemp)
+		Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21",V.Local.sFields(V.Local.i).Trim,"Caption",V.Local.sTemp)
+		Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21",V.Local.sFields(V.Local.i).Trim,"ReadOnly",True)
+		Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21",V.Local.sFields(V.Local.i).Trim,"AllowEdit",False)
+		Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21",V.Local.sFields(V.Local.i).Trim,"HeaderBackColor","Green")
+		Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21",V.Local.sFields(V.Local.i).Trim,"HeaderForeColor","White")
+		
+		F.Intrinsic.Control.If(V.Local.sFields(V.Local.i).Trim,=,"P21_PO","OR",V.Local.sFields(V.Local.i).Trim,=,"P21_PO_Line")
+			Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21",V.Local.sFields(V.Local.i).Trim,"Visible",True)
+		F.Intrinsic.Control.ElseIf(V.Local.sFields(V.Local.i).Trim,=,"P21_Part","OR",V.Local.sFields(V.Local.i).Trim,=,"P21_Description")
+			Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21",V.Local.sFields(V.Local.i).Trim,"Visible",True)
+		F.Intrinsic.Control.ElseIf(V.Local.sFields(V.Local.i).Trim,=,"P21_Date_Due","OR",V.Local.sFields(V.Local.i).Trim,=,"GSS_WO")
+			Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21",V.Local.sFields(V.Local.i).Trim,"Visible",True)
+		F.Intrinsic.Control.ElseIf(V.Local.sFields(V.Local.i).Trim,=,"GSS_Suffix","OR",V.Local.sFields(V.Local.i).Trim,=,"GSS_WO_Closed")
+			Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21",V.Local.sFields(V.Local.i).Trim,"Visible",True)
+		F.Intrinsic.Control.ElseIf(V.Local.sFields(V.Local.i).Trim,=,"P21_PO_Closed")
+			Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21",V.Local.sFields(V.Local.i).Trim,"Visible",True)
+		F.Intrinsic.Control.Else
+			F.Intrinsic.Control.If(V.Local.sFields(V.Local.i).Trim,=,"P21_Date_Due","OR",V.Local.sFields(V.Local.i).Trim,=,"P21_Order_Date")
+				Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21",V.Local.sFields(V.Local.i).Trim,"Visible",False)
+			F.Intrinsic.Control.EndIf
+			Gui.Form_P21_CleanUp.GsGridControlP21.SetColumnProperty("GP21",V.Local.sFields(V.Local.i).Trim,"Visible",False)
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.Next(V.Local.i)
+	
+	f.Intrinsic.Control.CallSub(Deserialize)
+	
+	Gui.Form_P21_CleanUp.GsGridControlP21.MainView("GP21")
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Set_Properties_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+F.Intrinsic.Control.EndIf
+Program.Sub.Set_Properties.End
+
+Program.Sub.Update_WO_Flag.Start
+F.Intrinsic.Control.SetErrorHandler("Update_WO_Flag_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sFields.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	V.Local.bRet.Declare(Boolean,False)
+	
+	V.Local.sFields.Set("P21_PO, P21_PO_Line, P21_Vendor, P21_Part, P21_Description, P21_Location, P21_Quantity, P21_Cost, P21_UM, P21_Date_Due, P21_Order_Date, P21_SHP2_CustName, P21_SHP2_CustAddress, P21_SHP2_CustState, P21_SHP2_CustCity, P21_SHP2_CustZip, P21_Bill_CustName, P21_Bill_CustAddress,P21_Bill_CustState,P21_Bill_CustCity,P21_Bill_CustZip, P21_SO, GSS_SO, GSS_SO_Line, GSS_WO, GSS_Suffix, GSS_Status, GSS_Status_Message, P21_Status, P21_Status_Message, GSS_WO_Closed, P21_PO_Closed, P21_SPECIALORDER, P21_CARRIERID")
+	
+	F.Intrinsic.Variable.ArgExists("Screen",V.Local.bRet)
+	
+	F.Intrinsic.Control.If(V.Local.bRet)
+		F.Intrinsic.Control.If(V.Args.Screen,=,"JBS0052")
+			'V.Passed.000003 - WO
+			'V.Passed.000004 - SUffix
+			F.ODBC.Connection!Con.OpenCompanyConnection
+			
+			F.Intrinsic.String.Build("Select {0} From GCG_5182_P21_PO_LINE Where GSS_WO = '{1}' and GSS_Suffix = '{2}'",V.Local.sFields,V.Passed.000003.Trim,V.Passed.000004.Trim,V.Local.sSql)
+			
+			F.Data.DataTable.CreateFromSQL("P21Update","con",V.Local.sSql,True)
+			
+			F.Data.DataTable.SetValue("P21Update",-1,"GSS_WO_Closed",True)
+			
+			V.Local.sFields.Set("P21_PO@!@P21_PO*!*P21_PO_Line@!@P21_PO_Line*!*GSS_WO_Closed@!@GSS_WO_Closed*!*P21_PO_Closed@!@P21_PO_Closed")
+			
+			F.Intrinsic.Control.Try
+				F.Data.DataTable.SaveToDB("P21Update","con","GCG_5182_P21_PO_Line","P21_PO*!*P21_PO_Line",2,V.Local.sFields)
+			F.Intrinsic.Control.Catch
+				'ingnoring record level betrieve conflict 
+				F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,"21045")
+					F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+					F.Intrinsic.UI.Msgbox(V.Local.sError)
+					F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+				F.Intrinsic.Control.EndIf
+			F.Intrinsic.Control.EndTry
+	
+			F.ODBC.Connection!Con.Close
+			F.Data.DataTable.Close("P21Update")
+		F.Intrinsic.Control.Else
+			F.Intrinsic.Control.If(V.Args.Screen,=,"ON-LINE")
+				F.Intrinsic.String.Build("Select {0} From GCG_5182_P21_PO_LINE where GSS_WO_CLOSED = 0 and rtrim(GSS_WO) NOT IN(Select rtrim(Job) From V_Job_Header) and GSS_WO <> ''",V.Local.sFields,V.Local.sSql)
+				F.ODBC.Connection!Con.OpenCompanyConnection
+				F.Data.DataTable.CreateFromSQL("P21Update","con",V.Local.sSql,True)
+				
+				F.Intrinsic.Control.If(V.DataTable.P21Update.RowCount--,<>,-1)
+				
+					F.Data.DataTable.SetValue("P21Update",-1,"GSS_WO_Closed",True)
+			
+					V.Local.sFields.Set("P21_PO@!@P21_PO*!*P21_PO_Line@!@P21_PO_Line*!*GSS_WO_Closed@!@GSS_WO_Closed*!*P21_PO_Closed@!@P21_PO_Closed")
+			
+					F.Intrinsic.Control.Try
+						F.Data.DataTable.SaveToDB("P21Update","con","GCG_5182_P21_PO_Line","P21_PO*!*P21_PO_Line",2,V.Local.sFields)
+					F.Intrinsic.Control.Catch
+						'ingnoring record level betrieve conflict 
+						F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,"21045")
+							F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+							F.Intrinsic.UI.Msgbox(V.Local.sError)
+							F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.EndTry
+	
+					F.ODBC.Connection!Con.Close
+					F.Data.DataTable.Close("P21Update")
+
+					F.Intrinsic.Control.If(V.Ambient.Time,>,"00:00:01 AM","AND",V.Ambient.Time,<,"01:00:00 AM")
+						'deleting p21 records that are closed to keep the custom table clean
+						F.ODBC.Connection!Con.OpenCompanyConnection
+						F.ODBC.Connection!Con.Execute("Delete From GCG_5182_P21_PO_Line Where P21_STATUS = 4")
+						F.ODBC.Connection!Con.Close
+					F.Intrinsic.Control.EndIf
+				F.Intrinsic.Control.EndIf
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Update_WO_Flag_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+F.Intrinsic.Control.EndIf
+Program.Sub.Update_WO_Flag.End
+
+Program.Sub.Serialize.Start
+F.Intrinsic.Control.SetErrorHandler("Serialize_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sSerialize.Declare(String,"")
+	V.Local.sFile.Declare(String,"")
+	V.Local.sDir.Declare(String,"")
+	V.Local.sGlobalDir.Declare(String,"")
+	V.Local.bRet.Declare(Boolean,False)
+	
+	F.Intrinsic.Control.If(V.Caller.GlobalDir.Right1,=,"\")
+		V.Local.sGlobalDir.Set(V.Caller.GlobalDir)
+	F.Intrinsic.Control.Else
+		F.Intrinsic.String.Build("{0}\",V.Caller.GlobalDir,V.Local.sGlobalDir)
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.String.Build("{0}\Custom",V.Caller.GlobalDir,V.Local.sDir)
+	
+	F.Intrinsic.File.DirExists(V.Local.sDir,V.Local.bRet)
+	F.Intrinsic.Control.If(V.Local.bRet,=,False)
+		F.Intrinsic.File.CreateDir(V.Local.sDir)
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.String.Build("{0}\Custom\5182",V.Caller.GlobalDir,V.Local.sDir)
+	F.Intrinsic.File.DirExists(V.Local.sDir,V.Local.bRet)
+	F.Intrinsic.Control.If(V.Local.bRet,=,False)
+		F.Intrinsic.File.CreateDir(V.Local.sDir)
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.String.Build("{0}\{1}_5182_P21.txt",V.Local.sDir,V.Caller.User,V.Local.sFile)
+	
+	Gui.Form_P21_CleanUp.GsGridControlP21.Serialize("GP21",V.Local.sSerialize)
+	F.Intrinsic.File.String2File(V.Local.sFile,V.Local.sSerialize)
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Serialize_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+F.Intrinsic.Control.EndIf
+Program.Sub.Serialize.End
+
+Program.Sub.Deserialize.Start
+F.Intrinsic.Control.SetErrorHandler("Deserialize_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sFile.Declare(String,"")
+	V.Local.bRet.Declare(Boolean,False)
+	V.Local.sReturn.Declare(String,"")
+	V.Local.sGlobalDir.Declare(String,"")
+	
+	F.Intrinsic.Control.If(V.Caller.GlobalDir.Right1,=,"\")
+		V.Local.sGlobalDir.Set(V.Caller.GlobalDir)
+	F.Intrinsic.Control.Else
+		F.Intrinsic.String.Build("{0}\",V.Caller.GlobalDir,V.Local.sGlobalDir)
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.String.Build("{0}\Custom\5182\{1}_5182_P21.txt",V.Local.sGlobalDir,V.Caller.User,V.Local.sFile)
+
+	F.Intrinsic.File.Exists(V.Local.sFile,V.Local.bRet)
+	F.Intrinsic.Control.If(V.Local.bRet)
+		F.Intrinsic.File.File2String(V.Local.sFile,V.Local.sReturn)
+		Gui.Form_P21_CleanUp.GsGridControlP21.Deserialize(V.Local.sReturn)
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Deserialize_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+F.Intrinsic.Control.EndIf
+Program.Sub.Deserialize.End
+
+Program.Sub.cmdRefresh_Click.Start
+F.Intrinsic.Control.SetErrorHandler("cmdRefresh_Click_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	
+	Gui.Form_P21_CleanUp..Enabled(False)
+	
+	F.Data.DataView.Close("P21","VP21")
+	F.Data.DataTable.Close("P21")
+	
+	F.Intrinsic.Control.CallSub(Get_Data)
+			
+	F.Intrinsic.Control.CallSub(Set_Properties)
+	
+	F.Intrinsic.Control.CallSub(chkShowAll_Click)
+	
+	Gui.Form_P21_CleanUp..Enabled(True)
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("cmdRefresh_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+F.Intrinsic.Control.EndIf
+Program.Sub.cmdRefresh_Click.End
+
+Program.Sub.Set_Anchors.Start
+F.Intrinsic.Control.SetErrorHandler("Set_Anchors_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	
+	Gui.Form_P21_CleanUp.GsGridControlP21.Anchor(15)
+	Gui.Form_P21_CleanUp.cmdDelete.Anchor(6)
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Set_Anchors_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+F.Intrinsic.Control.EndIf
+Program.Sub.Set_Anchors.End
+
+Program.Sub.MenuClick.Start
+F.Intrinsic.Control.SetErrorHandler("MenuClick_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sRows.Declare(String,"")
+	V.Local.i.Declare(Long,0)
+	
+	F.Intrinsic.Control.SelectCase(V.Args.ItemName.UCase)
+		F.Intrinsic.Control.Case("ITEM 0")
+			Gui.Form_P21_CleanUp.GsGridControlP21.GetSelectedRowsInFocus(V.Local.sRows)
+			F.Intrinsic.Control.If(V.Local.sRows,<>,"-1")
+				F.Intrinsic.String.Split(V.Local.sRows,"*!*",V.Local.sRows)
+				F.Intrinsic.Control.For(V.Local.i,0,V.Local.sRows.UBound,1)
+					F.Data.DataTable.SetValue("P21",V.Local.sRows(V.Local.i).Long,"Selection",True)
+				F.Intrinsic.Control.Next(V.Local.i)
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.Case("ITEM 1")
+			Gui.Form_P21_CleanUp.GsGridControlP21.GetSelectedRowsInFocus(V.Local.sRows)
+			F.Intrinsic.Control.If(V.Local.sRows,<>,"-1")
+				F.Intrinsic.String.Split(V.Local.sRows,"*!*",V.Local.sRows)
+				F.Intrinsic.Control.For(V.Local.i,0,V.Local.sRows.UBound,1)
+					F.Data.DataTable.SetValue("P21",V.Local.sRows(V.Local.i).Long,"Selection",False)
+				F.Intrinsic.Control.Next(V.Local.i)
+			F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.EndSelect
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("MenuClick_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+F.Intrinsic.Control.EndIf
+Program.Sub.MenuClick.End
+
+Program.Sub.Close_WO.Start
+F.Intrinsic.Control.SetErrorHandler("Close_WO_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sDate.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	V.Local.bDel.Declare(Boolean,False)
+	V.Local.i.Declare(Long,0)
+
+	F.ODBC.Connection!conts.OpenCompanyConnection
+	F.Intrinsic.String.Format(V.Ambient.Date,"YYYYMMDD",V.Local.sDate)
+
+	F.Data.DataTable.CreateFromSQL("Job","conts","Select a.Job, a.Suffix From GCG_5182_WO_CLOSE a Join V_Job_Header b on a.Job = b.Job and a.Suffix = b.SUffix Where Qty_Completed > 0",True)
+	F.Intrinsic.Control.For(V.Local.i,V.DataTable.Job.RowCount--,0,-1)
+		V.Local.bDel.Set(True)
+		F.Global.Callwrapper.New("WOClose","Manufacturing.CloseWorkOrder")
+		F.Global.Callwrapper.SetProperty("WOClose","BeginningWorkOrder",V.DataTable.Job(V.Local.i).Job!FieldValTrim)
+		F.Global.Callwrapper.SetProperty("WOClose","BeginningWorkOrderSuffix",V.DataTable.Job(V.Local.i).Suffix!FieldValTrim)
+		F.Global.Callwrapper.SetProperty("WOClose","CloseDate",V.Local.sDate)
+		F.Global.CallWrapper.Run("WOClose")
+		F.Intrinsic.String.Build("delete JOB_COMMITMENTS where JOB = '{0}' and SUFFIX = '{1}'",V.DataTable.Job(V.Local.i).Job!FieldValTrim,V.DataTable.Job(V.Local.i).Suffix!FieldValTrim,V.Local.sSql)
+		F.ODBC.Connection!conts.Execute(V.Local.sSql)
+		F.Data.DataTable.DeleteRow("Job",V.Local.i)
+	F.Intrinsic.Control.Next(V.Local.i)
+	
+	F.Intrinsic.Control.If(V.Local.bDel)
+		F.Data.DataTable.SaveToDB("Job","conts","GCG_5182_WO_CLOSE","Job*!*Suffix",4)
+	F.Intrinsic.Control.EndIf
+	
+	F.ODBC.Connection!conts.Close
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Close_WO_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_CleanUp.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Form_P21_CleanUp_UnLoad)
+F.Intrinsic.Control.EndIf
+Program.Sub.Close_WO.End
