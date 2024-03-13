@@ -1,0 +1,81 @@
+Program.Sub.ScreenSU.Start
+Gui.Form_P21_ERR_View..Create
+Gui.Form_P21_ERR_View..Caption("P21 Error View")
+Gui.Form_P21_ERR_View..Size(15360,10560)
+Gui.Form_P21_ERR_View..MinX(0)
+Gui.Form_P21_ERR_View..MinY(0)
+Gui.Form_P21_ERR_View..Position(0,0)
+Gui.Form_P21_ERR_View..BackColor(-2147483633)
+Gui.Form_P21_ERR_View..MousePointer(0)
+Gui.Form_P21_ERR_View..Event(UnLoad,Form_P21_ERR_View_UnLoad)
+Gui.Form_P21_ERR_View.GsGridControl1.Create(GsGridControl)
+Gui.Form_P21_ERR_View.GsGridControl1.Size(15090,10110)
+Gui.Form_P21_ERR_View.GsGridControl1.Position(75,75)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+	
+	Gui.Form_P21_ERR_View.GsGridControl1.Anchor(15)
+	
+	F.Intrinsic.Control.CallSub(Get_Data)
+	
+	Gui.Form_P21_ERR_View..Show
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Error_View.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.CallSub(Form_P21_ERR_View)
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.Form_P21_ERR_View_UnLoad.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+
+	F.Intrinsic.Control.End
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Error_View.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.End
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.Form_P21_ERR_View_UnLoad.End
+
+Program.Sub.Get_Data.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	
+	F.ODBC.Connection!Con.OpenCompanyConnection
+	
+	F.Intrinsic.String.Build("Select P21_PO, P21_PO_Line, GSS_SO, GSS_SO_Line, GSS_Status_Message From GCG_5182_P21_PO_Line Where GSS_Status = 2","",V.Local.sSql)
+	
+	F.Data.DataTable.CreateFromSQL("P21","con",V.Local.sSql,True)
+	
+	Gui.Form_P21_ERR_View.GsGridControl1.DataSource("P21")
+	
+	F.ODBC.Connection!Con.Close
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Error_View.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.CallSub(Form_P21_ERR_View)
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.Get_Data.End
