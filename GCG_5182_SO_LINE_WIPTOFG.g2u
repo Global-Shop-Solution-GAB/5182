@@ -1,0 +1,275 @@
+Program.Sub.ScreenSU.Start
+Gui.FormP21..Create
+Gui.FormP21..Caption("P21 Quantity")
+Gui.FormP21..Size(6135,3030)
+Gui.FormP21..MinX(0)
+Gui.FormP21..MinY(0)
+Gui.FormP21..Position(0,0)
+Gui.FormP21..BackColor(-2147483633)
+Gui.FormP21..MousePointer(0)
+Gui.FormP21..Sizeable(False)
+Gui.FormP21..Event(UnLoad,FormP21_UnLoad)
+Gui.FormP21.lblOpen.Create(Label,"Open Quantity",True,1215,255,0,915,945,True,0,"Arial",8,-2147483633,0)
+Gui.FormP21.lblP21Qty.Create(Label,"P21 Quantity",True,1095,255,0,3645,945,True,0,"Arial",8,-2147483633,0)
+Gui.FormP21.txtOpen.Create(TextBox,"",True,1215,345,0,915,1260,True,0,"Arial",10,-2147483643,1)
+Gui.FormP21.txtOpen.Locked(True)
+Gui.FormP21.txtP21.Create(TextBox,"",True,1215,345,0,3585,1260,True,0,"Arial",10,-2147483643,1)
+Gui.FormP21.txtP21.Locked(True)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.External.Include.Library("2003.lib")
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+V.Local.sSql.Declare(String,"")
+V.Local.fQty.Declare(Float,0)
+V.Local.sOrder.Declare(String,"")
+V.Local.sLine.Declare(String,"")
+V.Local.sPart.Declare(String,"")
+
+F.Intrinsic.Control.SelectCase(V.Caller.Hook)
+	'SO LINE Populate hook
+	F.Intrinsic.Control.Case(12010)
+		V.Passed.000210.Set("WIP TO FG")
+		F.Intrinsic.Variable.SetProperty("GAB-TEXT-1","PL",282)
+		F.Intrinsic.Variable.SetProperty("GAB-TEXT-1","PT",200)
+		F.Intrinsic.Variable.SetProperty("GAB-TEXT-1","PW",90)
+		
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.GAB-TEXT-1,"HIDE",0)
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.GAB-TEXT-1,"LOCK",1)
+		
+		F.Intrinsic.Variable.SetProperty("GAB-LBL-1","PL",214)
+		F.Intrinsic.Variable.SetProperty("GAB-LBL-1","PT",200)
+		F.Intrinsic.Variable.SetProperty("GAB-LBL-1","PW",65)
+		
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.GAB-LBL-1,"HIDE",0)
+		F.Intrinsic.UI.ChangeCallerProperty(V.Passed.GAB-LBL-1,"LOCK",0)
+		
+		V.Passed.GAB-LBL-1.Set("P21 Qty")
+		
+	'Line Change Hook
+	F.Intrinsic.Control.Case(12705)
+		F.ODBC.Connection!Con.OpenCompanyConnection
+		
+		F.Intrinsic.String.Format(V.Passed.000060,"0000000",V.Local.sOrder)
+		F.Intrinsic.String.Format(V.Passed.000051,"000",V.Local.sLine)
+		F.Intrinsic.String.RPad(V.Local.sLine,"0",4,V.Local.sLine)
+		
+		F.Intrinsic.String.Build("Select P21_Qty_Recv From GCG_5182_P21_PO_LINE Where GSS_SO = '{0}' and GSS_SO_Line = '{1}'",V.Local.sOrder,V.Local.sLine,V.Local.sSql)
+		
+		F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSql,V.Local.fQty)
+		
+		V.Passed.GAB-TEXT-1.Set(V.Local.fQty)
+		
+		F.ODBC.Connection!con.Close
+	'Script 3 Hook
+	F.Intrinsic.Control.Case(12430)
+		V.Local.sPart.Set(V.Passed.000051.Trim)
+		F.Intrinsic.String.Format(V.Passed.000060,"0000000",V.Local.sOrder)
+		F.Intrinsic.String.Format(V.Passed.000051,"000",V.Local.sLine)
+		F.Intrinsic.String.RPad(V.Local.sLine,"0",4,V.Local.sLine)
+
+		F.Intrinsic.Control.CallSub(Get_Data,"Order",V.Local.sOrder,"Line",V.Local.sLine,"Part",V.Local.sPart)
+	
+	'Populate Hook WIP TO FG screen
+	F.Intrinsic.Control.Case(16492)
+		V.Passed.000260.Set("P21 Qty")
+		
+	'Script 1 on WIP TO FG Screen
+	F.Intrinsic.Control.Case(16512)
+		F.ODBC.Connection!Con.OpenCompanyConnection
+		F.Intrinsic.String.Build("Select a.Qty_Order - a.Qty_Completed as Qty_Open, P21_Qty_Recv From V_Job_Header a Left Join GCG_5182_P21_PO_LINE b on a.Job = b.GSS_WO and a.Suffix = b.GSS_SUFFIX Where a.Job = '{0}' and a.Suffix = '{1}'",V.Passed.000003,V.Passed.000004,V.Local.sSql)
+		F.Data.DataTable.CreateFromSQL("Temp","con",V.Local.sSql,True)
+		F.Intrinsic.Control.If(V.DataTable.Temp.RowCount--,<>,-1)
+			Gui.FormP21.txtOpen.Text(V.DataTable.Temp(V.DataTable.Temp.RowCount--).Qty_Open!FieldVal)
+			Gui.FormP21.txtP21.Text(V.DataTable.Temp(V.DataTable.Temp.RowCount--).P21_Qty_Recv!FieldVal)
+		F.Intrinsic.Control.EndIf
+		F.ODBC.Connection!Con.Close
+		Gui.FormP21..Show
+		Gui.FormP21..WaitForDismiss
+	
+	'Populate Hook Gui screen
+	F.Intrinsic.Control.Case(15710)
+		V.Passed.000021.Set("P21 Qty")
+		
+	'Script 3 on Gui
+	F.Intrinsic.Control.Case(15780)
+		F.ODBC.Connection!Con.OpenCompanyConnection
+		F.Intrinsic.String.Build("Select a.Qty_Order - a.Qty_Completed as Qty_Open, P21_Qty_Recv From V_Job_Header a Left Join GCG_5182_P21_PO_LINE b on a.Job = b.GSS_WO and a.Suffix = b.GSS_SUFFIX Where a.Job = '{0}' and a.Suffix = '{1}'",V.Passed.009990,V.Passed.009991,V.Local.sSql)
+		F.Data.DataTable.CreateFromSQL("Temp","con",V.Local.sSql,True)
+		F.Intrinsic.Control.If(V.DataTable.Temp.RowCount--,<>,-1)
+			Gui.FormP21.txtOpen.Text(V.DataTable.Temp(V.DataTable.Temp.RowCount--).Qty_Open!FieldVal)
+			Gui.FormP21.txtP21.Text(V.DataTable.Temp(V.DataTable.Temp.RowCount--).P21_Qty_Recv!FieldVal)
+		F.Intrinsic.Control.EndIf
+		F.ODBC.Connection!Con.Close
+		Gui.FormP21..Show
+		Gui.FormP21..WaitForDismiss
+	
+	'Populate Hook Gui screen update wo
+	F.Intrinsic.Control.Case(15840)
+		V.Passed.000050.Set("P21 Qty")
+		
+	'Script 3 update wo
+	F.Intrinsic.Control.Case(15870)
+		F.ODBC.Connection!Con.OpenCompanyConnection
+		F.Intrinsic.String.Build("Select a.Qty_Order - a.Qty_Completed as Qty_Open, P21_Qty_Recv From V_Job_Header a Left Join GCG_5182_P21_PO_LINE b on a.Job = b.GSS_WO and a.Suffix = b.GSS_SUFFIX Where a.Job = '{0}' and a.Suffix = '{1}'",V.Passed.009990,V.Passed.009991,V.Local.sSql)
+		F.Data.DataTable.CreateFromSQL("Temp","con",V.Local.sSql,True)
+		F.Intrinsic.Control.If(V.DataTable.Temp.RowCount--,<>,-1)
+			Gui.FormP21.txtOpen.Text(V.DataTable.Temp(V.DataTable.Temp.RowCount--).Qty_Open!FieldVal)
+			Gui.FormP21.txtP21.Text(V.DataTable.Temp(V.DataTable.Temp.RowCount--).P21_Qty_Recv!FieldVal)
+		F.Intrinsic.Control.EndIf
+		F.ODBC.Connection!Con.Close
+		Gui.FormP21..Show
+		Gui.FormP21..WaitForDismiss
+		
+F.Intrinsic.Control.EndSelect
+
+F.Intrinsic.Control.CallSub(Exit)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: GCG_5182_SO_LINE_WIPTOFG.g2u {0}{0}Subroutine: {1}{0}Error Occurred {2} with description {3}",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Get_Data.Start
+F.Intrinsic.Control.SetErrorHandler("Get_Data_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+V.Local.sSql.Declare(String,"")
+V.Local.sJS.Declare(String,"")
+V.Local.iDay.Declare(Long,0)
+V.Local.iMonth.Declare(Long,0)
+V.Local.iYear.Declare(Long,0)
+
+F.Intrinsic.Date.Day(V.Ambient.Date,V.Local.iDay)
+F.Intrinsic.Date.Month(V.Ambient.Date,V.Local.iMonth)
+F.Intrinsic.Date.Year(V.Ambient.Date,V.Local.iYear)
+
+F.Intrinsic.String.Build("Select a.Job, a.Suffix, a.Part, a.Description, a.Qty_Order - a.Qty_Completed as Qty_Open From V_Job_Header a Join V_Order_To_Wo b on a.Job = b.Job and a.Suffix = b.Suffix Where Order_No = '{0}' and Order_Line = '{1}'",V.Args.Order,V.Args.Line,V.Local.sSql)
+
+F.ODBC.Connection!Con.OpenCompanyConnection
+
+F.Data.DataTable.CreateFromSQL("Job","con",V.Local.sSql,True)
+
+F.Intrinsic.Control.If(V.DataTable.Job.RowCount--,<>,-1)
+	F.Data.DataTable.AddRow("2003","Mode","OS","WONum",V.DataTable.Job(v.DataTable.Job.RowCount--).Job!FieldValTrim,"WOSuffix",V.DataTable.Job(v.DataTable.Job.RowCount--).Suffix!FieldValTrim,"CloseWO","Y","Quantity",V.DataTable.Job(v.DataTable.Job.RowCount--).Qty_Open!FieldValLong,"XferYear",V.Local.iYear,"XferDay",V.Local.iDay,"XferMonth",V.Local.iMonth,"PrintLabels","N","CostMethod","R","UpdateInv","Y")
+
+	F.Intrinsic.Control.If(V.DataTable.2003.RowCount--,<>,-1)
+		F.Intrinsic.Control.CallSub(2003Sync)
+		F.Data.DataTable.AcceptChanges("2003")
+		F.Data.DataTable.AcceptChanges("2003File")
+	F.Intrinsic.Control.EndIf
+	
+F.Intrinsic.Control.Else
+	F.Intrinsic.UI.Msgbox("Sales Order Line does not have a Work Order","Attention")
+F.Intrinsic.Control.EndIf
+
+F.ODBC.Connection!Con.Close
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Get_Data_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: GCG_5182_SO_LINE_WIPTOFG.g2u {0}{0}Subroutine: {1}{0}Error Occurred {2} with description {3}",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Get_Data.End
+
+Program.Sub.Exit.Start
+F.Intrinsic.Control.SetErrorHandler("Exit_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+
+F.Intrinsic.Control.If(V.DataTable.Job.Exists)
+	F.Data.DataTable.Close
+F.Intrinsic.Control.EndIf
+		
+F.Intrinsic.Control.If(V.ODBC.Con.State,=,1)
+	F.ODBC.Connection!Con.Close
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Exit_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.Control.End
+Function.Intrinsic.Control.EndIf
+Program.Sub.Exit.End
+
+Program.Sub.cmdWIP_Click.Start
+F.Intrinsic.Control.SetErrorHandler("cmdWIP_Click_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+V.Local.iDay.Declare(Long,0)
+V.Local.iMonth.Declare(Long,0)
+V.Local.iYear.Declare(Long,0)
+
+F.Intrinsic.Date.Day(V.Ambient.Date,V.Local.iDay)
+F.Intrinsic.Date.Month(V.Ambient.Date,V.Local.iMonth)
+F.Intrinsic.Date.Year(V.Ambient.Date,V.Local.iYear)
+
+F.Intrinsic.Control.If(V.Screen.FormSOWIP!txtWipQty.Text,>,0)
+	F.Intrinsic.Control.If(V.Screen.FormSOWIP!txtQtyOpen.Text,=,V.Screen.FormSOWIP!txtWipQty.Text)
+		F.Data.DataTable.AddRow("2003","Mode","NS","WONum",V.DataTable.Job(v.DataTable.Job.RowCount--).Job!FieldValTrim,"WOSuffix",V.DataTable.Job(v.DataTable.Job.RowCount--).Suffix!FieldValTrim,"CloseWO","Y","Quantity",V.Screen.FormSOWIP!txtWipQty.Text,"XferYear",V.Local.iYear,"XferDay",V.Local.iDay,"XferMonth",V.Local.iMonth,"PrintLabels","N","CostMethod","R","UpdateInv","Y")
+'		F.Data.DataTable.AddRow("2003File","WONum",V.DataTable.Job(v.DataTable.Job.RowCount--).Job!FieldValTrim,"WOSuffix",.DataTable.Job(v.DataTable.Job.RowCount--).Suffix!FieldValTrim,"SpecificQuantity",V.Screen.FormSOWIP!txtWipQty.Text)
+	F.Intrinsic.Control.Else
+		F.Data.DataTable.AddRow("2003","Mode","NS","WONum",V.DataTable.Job(v.DataTable.Job.RowCount--).Job!FieldValTrim,"WOSuffix",V.DataTable.Job(v.DataTable.Job.RowCount--).Suffix!FieldValTrim,"CloseWO","N","Quantity",V.Screen.FormSOWIP!txtWipQty.Text,"XferYear",V.Local.iYear,"XferDay",V.Local.iDay,"XferMonth",V.Local.iMonth,"PrintLabels","N","CostMethod","E","UpdateInv","Y")
+'		F.Data.DataTable.AddRow("2003File","WONum",V.DataTable.Job(v.DataTable.Job.RowCount--).Job!FieldValTrim,"WOSuffix",.DataTable.Job(v.DataTable.Job.RowCount--).Suffix!FieldValTrim,"SpecificQuantity",V.Screen.FormSOWIP!txtWipQty.Text)
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.Control.If(V.DataTable.2003.RowCount--,<>,-1)
+		F.Intrinsic.Control.CallSub(2003Sync)
+		F.Data.DataTable.AcceptChanges("2003")
+'		F.Data.DataTable.AcceptChanges("2003File")
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.Control.CallSub(FormSOWIP_UnLoad)
+F.Intrinsic.Control.Else
+	F.Intrinsic.UI.Msgbox("Enter WIP Qty","Attention")
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("cmdWIP_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: GCG_5182_SO_LINE_WIPTOFG.g2u {0}{0}Subroutine: {1}{0}Error Occurred {2} with description {3}",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmdWIP_Click.End
+
+Program.Sub.FormP21_UnLoad.Start
+F.Intrinsic.Control.SetErrorHandler("FormP21_UnLoad_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+
+Gui.FormP21..Visible(False)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("FormP21_UnLoad_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: GCG_5182_SO_LINE_WIPTOFG.g2u {0}{0}Subroutine: {1}{0}Error Occurred {2} with description {3}",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+Function.Intrinsic.Control.EndIf
+Program.Sub.FormP21_UnLoad.End
+
+
