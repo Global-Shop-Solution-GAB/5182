@@ -1,0 +1,729 @@
+Program.Sub.Preflight.Start
+Program.External.Include.Library("ORDUPL.lib")
+Program.External.Include.Library("6021.lib")
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sFile.Declare(String,"")
+	V.Local.bCheck.Declare(Boolean,False)
+	V.Local.sRet.Declare(String,"")
+	V.Local.iTime.Declare(Long,0)
+	
+	F.Intrinsic.String.Build("{0}\5182_{1}.stop",V.Caller.FilesDir,V.Caller.CompanyCode,V.Local.sFile)
+	F.Intrinsic.File.Exists(V.Local.sFile,v.Local.bCheck)
+	F.Intrinsic.Control.If(V.Local.bCheck,=,True)
+		F.Intrinsic.Control.End
+	F.Intrinsic.Control.EndIf
+
+	F.ODBC.Connection!con.OpenCompanyConnection(999)
+	
+	F.ODBC.Connection!Con.ExecuteAndReturn("Select L_Time, Menu_PID, WD_PID From GCG_5182_P21_Launch",V.Local.sRet)
+	F.Intrinsic.Control.If(V.Local.sRet.Trim,<>,"")
+		F.Intrinsic.String.Split(V.Local.sRet,"*!*",V.Local.sRet)
+		V.Local.sRet.RedimPreserve(0,2)
+		F.Intrinsic.Date.DateDiff("H",V.Local.sRet(0),V.Ambient.Now,V.Local.iTime)
+		
+		F.Intrinsic.Control.If(V.Local.iTime,>=,2)
+			'ending process closing menu and watchdog and relaunching to keep the menu from running out of memorey.
+			F.ODBC.Connection!Con.Execute("Update GCG_5182_P21_Launch Set Menu_PID = 'Launch'")
+			F.ODBC.Connection!Con.Close
+			F.Intrinsic.String.Build("{0}\GCG_5182_P21_WatchDog.bat",v.Caller.GlobalDir,V.Local.sRet)
+			F.Intrinsic.Task.ShellExec(V.Caller.Handle,"runas",V.Local.sRet, "", "", 1)
+			F.Intrinsic.Task.TerminatePID(V.Local.sRet(2))
+			F.Intrinsic.Task.TerminatePID(V.Local.sRet(1))
+			F.Intrinsic.Control.End
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.UI.InvokeWaitDialog("Getting P21 Purchase Orders................")
+	F.Intrinsic.Control.CallSub(Get_P21_PO)
+	F.Intrinsic.UI.ChangeWaitStatus("Creating Sales Order from Purchase Order.......................")
+	
+	F.Intrinsic.Control.CallSub(Create_SO)
+	
+	'RLK - 4/10/2019 - This is now a manual process
+'	F.Intrinsic.Control.CallSub(Cleanup_P21Table)
+	F.Intrinsic.UI.CloseWaitDialog
+	
+	'getting a list of closed work orders and updating P21 PO Closed flag in custom table.  This will account for when a job is closed from the GUI.
+			
+	F.Intrinsic.Control.CallSub(Update_WO_Flag,"Screen","ON-LINE")
+			
+	F.Intrinsic.Control.CallSub(Call_GAB_Script)
+	
+	F.Intrinsic.Control.CallSub(Exit)
+	
+	F.Intrinsic.Control.ExitSub
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+F.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.Get_P21_PO.Start
+F.Intrinsic.Control.SetErrorHandler("Get_P21_PO_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+
+	F.Intrinsic.String.Build("Select rtrim(P21_PO) as P21_PO, rtrim(P21_PO_LINE) as P21_PO_LINE, P21_VENDOR, P21_PART, P21_DESCRIPTION, P21_LOCATION, P21_QUANTITY, P21_COST, P21_UM, P21_DATE_DUE, P21_ORDER_DATE, P21_SHP2_CUSTNAME, P21_SHP2_CUSTADDRESS, P21_SHP2_CUSTSTATE, P21_SHP2_CUSTCITY, P21_SHP2_CUSTZIP,","",V.Local.sSql)
+'	F.Intrinsic.String.Build("{0} P21_BILL_CUSTNAME, P21_BILL_CUSTADDRESS, P21_BILL_CUSTSTATE, P21_BILL_CUSTCITY, P21_BILL_CUSTZIP, P21_SO, GSS_SO, GSS_SO_LINE, GSS_WO, GSS_SUFFIX, GSS_STATUS, GSS_STATUS_MESSAGE, P21_STATUS, P21_STATUS_MESSAGE, P21_SPECIALORDER, P21_CARRIERID From GCG_5182_P21_PO_Line Where (GSS_STATUS = 0 OR GSS_STATUS = 2) and (GSS_SO = '' or GSS_SO is Null)",V.Local.sSql,V.Local.sSql)
+	F.Intrinsic.String.Build("{0} P21_BILL_CUSTNAME, P21_BILL_CUSTADDRESS, P21_BILL_CUSTSTATE, P21_BILL_CUSTCITY, P21_BILL_CUSTZIP, P21_SO, GSS_SO, GSS_SO_LINE, GSS_WO, GSS_SUFFIX, GSS_STATUS, GSS_STATUS_MESSAGE, P21_STATUS, P21_STATUS_MESSAGE, P21_SPECIALORDER, P21_CARRIERID From GCG_5182_P21_PO_Line Where (GSS_WO = '' or GSS_WO is Null) and P21_Status = 1 Order By P21_PO,P21_PO_LINE",V.Local.sSql,V.Local.sSql)
+	
+	F.Data.DataTable.CreateFromSQL("P21","con",V.Local.sSql,True)
+	
+	F.Intrinsic.Control.If(V.DataTable.P21.RowCount--,=,-1)
+		F.Data.DataTable.Close("P21")
+		F.Intrinsic.Control.CallSub(Call_GAB_Script)
+		F.Intrinsic.Control.CallSub(Exit)
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Get_P21_PO_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+F.Intrinsic.Control.EndIf
+Program.Sub.Get_P21_PO.End
+
+Program.Sub.Exit.Start
+F.Intrinsic.Control.SetErrorHandler("Exit_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+
+	F.ODBC.Connection!con.Close
+	
+	F.Intrinsic.Control.End
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Exit_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End
+F.Intrinsic.Control.EndIf
+Program.Sub.Exit.End
+
+Program.Sub.Create_SO.Start
+F.Intrinsic.Control.SetErrorHandler("Create_SO_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.i.Declare(Long,0)
+	V.Local.iCount.Declare(Long,0)
+	V.Local.sFilter.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	V.Local.sRet.Declare(String,"")
+	V.Local.sWOFile.Declare(String,"")
+	V.Local.sPart.Declare(String,"")
+	V.Local.sSOFile.Declare(String,"")
+	V.Local.iErr.Declare(Long,0)
+	V.Local.bRet.Declare(Boolean,False)
+	V.Local.sErrorText.Declare(String,"")
+	V.Local.sDueDate.Declare(String,"")
+	V.Local.sTemp.Declare(String,"")
+	V.Local.sMsg.Declare(String,"")
+	V.Local.sP21Part.Declare(String,"")
+	V.Local.sPL.Declare(String,"")
+	V.Local.sWO.Declare(String,"")
+	V.Local.sFieldMap.Declare(String,"P21_PO@!@P21_PO*!*P21_PO_LINE@!@P21_PO_LINE*!*P21_VENDOR@!@P21_VENDOR*!*P21_PART@!@P21_PART*!*P21_DESCRIPTION@!@P21_DESCRIPTION*!*P21_LOCATION@!@P21_LOCATION*!*P21_QUANTITY@!@P21_QUANTITY*!*P21_COST@!@P21_COST*!*P21_UM@!@P21_UM*!*P21_DATE_DUE@!@P21_DATE_DUE*!*P21_ORDER_DATE@!@P21_ORDER_DATE*!*P21_SHP2_CUSTNAME@!@P21_SHP2_CUSTNAME*!*P21_SHP2_CUSTADDRESS@!@P21_SHP2_CUSTADDRESS*!*P21_SHP2_CUSTSTATE@!@P21_SHP2_CUSTSTATE*!*P21_SHP2_CUSTCITY@!@P21_SHP2_CUSTCITY*!*P21_SHP2_CUSTZIP@!@P21_SHP2_CUSTZIP*!*P21_BILL_CUSTNAME@!@P21_BILL_CUSTNAME*!*P21_BILL_CUSTADDRESS@!@P21_BILL_CUSTADDRESS*!*P21_BILL_CUSTSTATE@!@P21_BILL_CUSTSTATE*!*P21_BILL_CUSTCITY@!@P21_BILL_CUSTCITY*!*P21_BILL_CUSTZIP@!@P21_BILL_CUSTZIP*!*P21_SO@!@P21_SO*!*GSS_SO@!@GSS_SO*!*GSS_SO_LINE@!@GSS_SO_LINE*!*GSS_WO@!@GSS_WO*!*GSS_SUFFIX@!@GSS_SUFFIX*!*GSS_STATUS@!@GSS_STATUS*!*GSS_STATUS_MESSAGE@!@GSS_STATUS_MESSAGE*!*P21_STATUS@!@P21_STATUS*!*P21_STATUS_MESSAGE@!@P21_STATUS_MESSAGE*!*P21_SPECIALORDER@!@P21_SPECIALORDER*!*P21_CARRIERID@!@P21_CARRIERID")
+	V.Local.sFile.Declare(String,"")
+	V.Local.bCheck.Declare(Boolean,False)
+	
+	F.Data.DataView.Create("P21","VP21")
+	F.Data.DataView.ToDataTableDistinct("P21","VP21","DistinctP21","P21_PO")
+	
+	F.Intrinsic.Control.For(V.Local.i,0,V.DataTable.DistinctP21.RowCount--,1)
+		
+		F.Intrinsic.String.Build("{0}\5182_{1}.stop",V.Caller.FilesDir,V.Caller.CompanyCode,V.Local.sFile)
+		F.Intrinsic.File.Exists(V.Local.sFile,v.Local.bCheck)
+		F.Intrinsic.Control.If(V.Local.bCheck,=,True)
+			F.Intrinsic.Control.End
+		F.Intrinsic.Control.EndIf
+		F.Intrinsic.UI.ChangeWaitStatus("Creating Sales Order from Purchase Order.......................")
+		F.Intrinsic.String.Build("P21_PO = '{0}'",V.DataTable.DistinctP21(V.Local.i).P21_PO!FieldValTrim,V.Local.sFilter)
+		F.Intrinsic.Control.If(V.DataView.P21!VP21.Exists)
+			f.Data.DataView.Close("P21","VP21")
+		f.Intrinsic.Control.EndIf	
+		F.Data.DataView.Create("P21","VP21",22,V.Local.sFilter,"P21_PO_Line")
+'		F.Data.DataView.SetFilter("P21","VP21",V.Local.sFilter)
+'		F.Data.DataView.SetSort("P21","VP21","P21_PO_Line")
+		
+		F.Intrinsic.Control.For(V.Local.iCount,0,V.DataView.P21!VP21.RowCount--,1)
+			F.Intrinsic.String.Build("Select Top 1 a.Order_NO, b.Record_No, Part From V_Order_Header a left join V_Order_Lines b on a.Order_No = b.Order_No Where Customer_PO = '{0}' and b.User_1 = '{1}' Order by a.Order_No Desc",V.DataView.P21!VP21(V.Local.iCount).P21_PO!FieldValTrim,V.DataView.P21!VP21(V.Local.iCount).P21_PO_Line!FieldValTrim,V.Local.sSql)
+			F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSql,V.Local.sRet)
+			F.Intrinsic.String.Split(V.Local.sRet,"*!*",V.Local.sRet)
+			
+			F.Intrinsic.Control.If(V.Local.sRet.Trim,=,"")
+				F.Data.DataView.SetValue("P21","VP21",V.Local.iCount,"GSS_SO","","GSS_SO_Line","")
+			F.Intrinsic.Control.EndIf
+			
+			F.Intrinsic.Control.If(V.DataView.P21!VP21(V.Local.iCount).GSS_SO!FieldValTrim,=,"")
+				F.Intrinsic.String.Build("Select Part From V_Inventory_Mst2 Where Rtrim(Description_3) = '{0}'",V.DataView.P21!VP21(V.Local.iCount).P21_Part!FieldValTrim,V.Local.sSql)
+				F.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSql,V.Local.sRet)
+				F.Intrinsic.Control.If(V.Local.sRet.Trim,=,"")
+					F.Intrinsic.Control.CallSub(Create_Part,"Index",V.Local.iCount)
+					V.Local.sPart.Set(V.Args.Part.Trim)
+				F.Intrinsic.Control.Else
+					V.Local.sPart.Set(V.Local.sRet.Trim)
+				F.Intrinsic.Control.EndIf
+				
+'				F.Intrinsic.Control.If(V.DataView.P21!VP21(V.Local.iCount).P21_SPECIALORDER!FieldValTrim,<>,"")
+					F.Intrinsic.String.Build("Select Part,  Code_Sort From Inventory_Mstr Where Rtrim(Part) = '{0}' and Code_Sort = ''",V.Local.sPart.Trim,V.Local.sSql)
+					F.Data.DataTable.CreateFromSQL("PartCodeSort","con",V.Local.sSql,True)
+					F.Intrinsic.Control.If(V.DataTable.PartCodeSort.RowCount--,<>,-1)
+						F.Intrinsic.String.Left(V.DataView.P21!VP21(V.Local.iCount).P21_Part!FieldValTrim,3,V.Local.sSql)
+						F.Data.DataTable.SetValue("PartCodeSort",-1,"Code_Sort",V.Local.sSql)
+						F.Data.DataTable.SaveToDB("PartCodeSort","con","Inventory_Mstr","Part",3)
+					F.Intrinsic.Control.EndIf
+					F.Data.DataTable.Close("PartCodeSort")
+'				F.Intrinsic.Control.EndIf
+				
+				'creating Sales Order
+				F.Intrinsic.Control.If(V.Local.iCount,=,0)
+					F.Intrinsic.Control.CallSub(SO_Hdr,"Index",V.Local.iCount)
+					F.Intrinsic.Control.CallSub(SO_Lines,"Index",V.Local.iCount,"Part",V.Local.sPart)
+				F.Intrinsic.Control.Else
+					F.Intrinsic.Control.CallSub(SO_Lines,"Index",V.Local.iCount,"Part",V.Local.sPart)
+				F.Intrinsic.Control.EndIf
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.Next(V.Local.iCount)
+		
+		F.Intrinsic.Control.If(V.DataTable.ORDUPL.RowCount--,<>,-1)
+			F.Intrinsic.Control.CallSub(ORDUPLCreateFile)
+			F.Intrinsic.Control.CallSub(ORDUPLSync)
+		F.Intrinsic.Control.EndIf
+		
+		F.Data.DataTable.AcceptChanges("ORDUPL")
+		F.Data.DataTable.AcceptChanges("ORDUPLExtra")
+		F.Data.DataTable.AcceptChanges("ORDUPLLines")
+		
+		F.Intrinsic.UI.Sleep(2)
+		'creating Work Order
+		'building wo File
+		'updating dataview with SO information
+		F.Intrinsic.Control.For(V.Local.iCount,0,V.DataView.P21!VP21.RowCount--,1)
+			F.Intrinsic.String.Build("Select Top 1 a.Order_NO, b.Record_No, Part From V_Order_Header a left join V_Order_Lines b on a.Order_No = b.Order_No Where Customer_PO = '{0}' and b.User_1 = '{1}' Order by a.Order_No Desc",V.DataView.P21!VP21(V.Local.iCount).P21_PO!FieldValTrim,V.DataView.P21!VP21(V.Local.iCount).P21_PO_Line!FieldValTrim,V.Local.sSql)
+			F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSql,V.Local.sRet)
+			F.Intrinsic.String.Split(V.Local.sRet,"*!*",V.Local.sRet)
+			
+			F.Intrinsic.Control.If(V.Local.sRet.UBound,=,2)
+				V.Local.sPart.Set(V.Local.sRet(2).Trim)
+				F.Intrinsic.Control.If(V.Local.sPart.Trim,<>,"")
+					F.Data.DataView.SetValue("P21","VP21",V.Local.iCount,"GSS_SO",V.Local.sRet(0).Trim,"GSS_SO_Line",V.Local.sRet(1).Trim,"GSS_Status",1,"GSS_Status_Message","")
+				
+					'passing T for BOM WO or  blank for Single Level.
+					F.Intrinsic.String.Build("Select Router From V_ROUTER_HEADER Where Router = '{0}'",V.Local.sPart,V.Local.sSql)
+					F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSql,V.Local.sTemp)
+					F.Intrinsic.Control.If(V.Local.sTemp.Trim,<>,"")
+						'setting Ship Via on Sales Order Header.  Truncate to 20 chars
+						F.Intrinsic.String.Build("Update Order_Header Set Ship_Via = '{0}' Where Order_No = '{1}' and Record_No = 'A'",V.DataView.P21!VP21(V.Local.iCount).P21_CarrierID!FieldValTrim,V.Local.sRet(0).Trim,V.Local.sSql)
+						F.ODBC.Connection!Con.Execute(V.Local.sSql)
+						
+						F.Intrinsic.String.Build("Select Top 1 Job,Suffix From V_Order_To_WO Where Order_No = '{0}' and Order_Line = '{1}'",V.Local.sRet(0).Trim,V.Local.sRet(1).Trim,V.Local.sSql)
+						F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sSql,V.Local.sWO)
+						F.Intrinsic.String.Split(V.Local.sWO,"*!*",V.Local.sWO)
+						V.Local.sWO.RedimPreserve(0,1)
+						F.Data.DataView.SetValue("P21","VP21",V.Local.iCount,"GSS_WO",V.Local.sWO(0).Trim,"GSS_Suffix",V.Local.sWO(1).Trim,"GSS_Status",1,"GSS_Status_Message","")
+						
+						F.Intrinsic.Control.If(V.Local.sWO.Trim,=,"")
+							F.Intrinsic.Control.If(V.Local.sWOFile.Trim,=,"")
+								F.Intrinsic.String.Format(V.DataView.P21!VP21(V.Local.iCount).P21_Date_Due!FieldVal,"MM/DD/YYYY",V.Local.sDueDate)
+								F.Intrinsic.String.Build("{0}*!*{1}*!*{2}*!*{3}*!*{4}*!*{7}*!* *!*{5}*!*{6}",V.Local.sPart,"","",V.Local.sDueDate,V.DataView.P21!VP21(V.Local.iCount).P21_Quantity!FieldVal,V.DataView.P21!VP21(V.Local.iCount).GSS_SO!FieldValTrim,V.DataView.P21!VP21(V.Local.iCount).GSS_SO_Line!FieldValTrim,V.Local.sPart,V.Local.sWOFile)
+							F.Intrinsic.Control.Else
+								F.Intrinsic.String.Format(V.DataView.P21!VP21(V.Local.iCount).P21_Date_Due!FieldVal,"MM/DD/YYYY",V.Local.sDueDate)
+								F.Intrinsic.String.Build("{0}{1}{2}*!*{3}*!*{4}*!*{5}*!*{6}*!*{9}*!* *!*{7}*!*{8}",V.Local.sWOFile,V.Ambient.NewLine,V.Local.sPart,"","",V.Local.sDueDate,V.DataView.P21!VP21(V.Local.iCount).P21_Quantity!FieldVal,V.DataView.P21!VP21(V.Local.iCount).GSS_SO!FieldValTrim,V.DataView.P21!VP21(V.Local.iCount).GSS_SO_Line!FieldValTrim,V.Local.sPart,V.Local.sWOFile)
+							F.Intrinsic.Control.EndIf
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.Else
+						
+						F.Intrinsic.String.Build("Select Product_Line From V_Inventory_Mstr Where Part = '{0}'",V.Local.sPart,V.Local.sPL)
+						F.ODBC.Connection!Con.ExecuteAndReturn(V.Local.sPL,V.Local.sPL)
+						F.Intrinsic.Control.CallSub(Create_Router,"Index",V.Local.iCount,"Part",V.Local.sPart.Trim,"PL",V.Local.sPL)
+						F.Intrinsic.String.Build("Router does not exists for Part {0}",V.Local.sPart,V.Local.sMsg)
+						F.Data.DataView.SetValue("P21","VP21",V.Local.iCount,"GSS_Status",2,"GSS_Status_Message",V.Local.sMsg)
+					F.Intrinsic.Control.EndIf
+				F.Intrinsic.Control.EndIf
+			F.Intrinsic.Control.Else
+				'if line doesn't exists need to check for error
+				'If an error occurs The Whole PO from P_21 will hold off till Error is resolved	
+				F.Intrinsic.String.Build("{0}\ORDUP{1}.ERR",V.Caller.FilesDir,V.Caller.CompanyCode,V.Local.sErrorText)
+				F.Intrinsic.File.File2String(V.Local.sErrorText,V.Local.sErrorText)
+				
+				F.Intrinsic.String.Split(V.Local.sErrorText,"ERROR:   ",V.Local.sErrorText)
+				F.Intrinsic.String.Split(V.Local.sErrorText(V.Local.sErrorText.UBound),"Pgm=ORDUP1",V.Local.sErrorText)
+				F.Intrinsic.String.Split(V.Local.sErrorText(V.Local.sErrorText.UBound),"|",V.Local.sErrorText)
+				
+				F.Data.DataView.SetValue("P21","VP21",V.Local.iCount,"GSS_Status",2,"GSS_Status_Message",V.Local.sErrorText.Trim)
+					
+			F.Intrinsic.Control.EndIf
+			
+		F.Intrinsic.Control.Next(V.Local.iCount)
+		
+		F.Intrinsic.Control.Try
+			F.Data.DataTable.SaveToDB("P21","Con","GCG_5182_P21_PO_Line","P21_PO*!*P21_PO_LINE",256,V.Local.sFieldMap)
+			F.Data.DataTable.AcceptChanges("P21")
+		F.Intrinsic.Control.Catch
+			'ingnoring record level betrieve conflict 
+			F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,"21045")
+				F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+				F.Intrinsic.UI.Msgbox(V.Local.sError)
+				F.Intrinsic.Control.CallSub(Exit)
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.EndTry
+		F.Intrinsic.UI.ChangeWaitStatus("Creating Work Order from Sales Order.......................")
+		F.Intrinsic.Control.CallSub(Create_WO,"WO_File",V.Local.sWOFile)
+		V.Local.sWOFile.Set("")
+	
+	F.Intrinsic.Control.Next(V.Local.i)
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Create_SO_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+F.Intrinsic.Control.EndIf
+Program.Sub.Create_SO.End
+
+Program.Sub.Create_WO.Start
+F.Intrinsic.Control.SetErrorHandler("Create_WO_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sDate.Declare(String,"")
+	V.Local.sFile.Declare(String,"")
+	V.Local.sData.Declare(String,"")
+	V.Local.i.Declare(Long,0)
+	V.Local.sSql.Declare(String,"")
+	V.Local.sFilter.Declare(String,"")
+	V.Local.sRet.Declare(String,"")
+	V.Local.sLocal.Declare(String,"")
+	V.Local.sOrder.Declare(String,"")
+	V.Local.sLine.Declare(String,"")
+	V.Local.sFieldMap.Declare(String,"P21_PO@!@P21_PO*!*P21_PO_LINE@!@P21_PO_LINE*!*P21_VENDOR@!@P21_VENDOR*!*P21_PART@!@P21_PART*!*P21_DESCRIPTION@!@P21_DESCRIPTION*!*P21_LOCATION@!@P21_LOCATION*!*P21_QUANTITY@!@P21_QUANTITY*!*P21_COST@!@P21_COST*!*P21_UM@!@P21_UM*!*P21_DATE_DUE@!@P21_DATE_DUE*!*P21_ORDER_DATE@!@P21_ORDER_DATE*!*P21_SHP2_CUSTNAME@!@P21_SHP2_CUSTNAME*!*P21_SHP2_CUSTADDRESS@!@P21_SHP2_CUSTADDRESS*!*P21_SHP2_CUSTSTATE@!@P21_SHP2_CUSTSTATE*!*P21_SHP2_CUSTCITY@!@P21_SHP2_CUSTCITY*!*P21_SHP2_CUSTZIP@!@P21_SHP2_CUSTZIP*!*P21_BILL_CUSTNAME@!@P21_BILL_CUSTNAME*!*P21_BILL_CUSTADDRESS@!@P21_BILL_CUSTADDRESS*!*P21_BILL_CUSTSTATE@!@P21_BILL_CUSTSTATE*!*P21_BILL_CUSTCITY@!@P21_BILL_CUSTCITY*!*P21_BILL_CUSTZIP@!@P21_BILL_CUSTZIP*!*P21_SO@!@P21_SO*!*GSS_SO@!@GSS_SO*!*GSS_SO_LINE@!@GSS_SO_LINE*!*GSS_WO@!@GSS_WO*!*GSS_SUFFIX@!@GSS_SUFFIX*!*GSS_STATUS@!@GSS_STATUS*!*GSS_STATUS_MESSAGE@!@GSS_STATUS_MESSAGE*!*P21_STATUS@!@P21_STATUS*!*P21_STATUS_MESSAGE@!@P21_STATUS_MESSAGE*!*P21_SPECIALORDER@!@P21_SPECIALORDER*!*P21_CARRIERID@!@P21_CARRIERID")
+	
+	F.Intrinsic.Control.If(V.Args.WO_File.Trim,<>,"")
+		F.Intrinsic.String.Format(V.Ambient.Now,"YYMMDD-HHMMSS",V.Local.sDate)
+		F.Intrinsic.Control.If(V.Caller.LocalGSSTempDir.Right1,=,"\")
+			V.Local.sLocal.Set(V.Caller.LocalGSSTempDir)
+		F.Intrinsic.Control.Else
+			F.Intrinsic.String.Build("{0}\",V.Caller.LocalGSSTempDir,V.Local.sLocal)
+		F.Intrinsic.Control.EndIf
+		F.Intrinsic.String.Build("{0}WO_5182-{1}.txt",V.Local.sLocal,V.Local.sDate,V.Local.sFile)
+		F.Intrinsic.File.String2File(V.Local.sFile,V.Args.WO_File)
+		
+		F.Global.Callwrapper.New("GenFG","Manufacturing.CreateWorkOrderFinishedGoodPart")
+		F.Global.Callwrapper.SetProperty("GenFG","FileName",V.Local.sFile)
+		F.Global.CallWrapper.Run("GenFG")
+		F.Global.CallWrapper.GetProperty("GenFG","ReturnCode",V.Local.sRet)
+		
+		F.Intrinsic.File.File2String(V.Local.sFile,V.Local.sData)
+		
+		F.Data.DataTable.CreateFromString("DTOut",V.Local.sData,"Part*!*Rev*!*Loc*!*Status*!*WO*!*Suffix","String*!*String*!*String*!*String*!*String*!*String","*!*",V.Ambient.NewLine,True)
+		
+		F.Intrinsic.Control.For(V.Local.i,0,V.DataTable.DTOut.RowCount--,1)
+			'updating wo suffix in p21 datatable
+			F.Intrinsic.Control.If(V.DataTable.DTOut(V.Local.i).Status!FieldValTrim,=,"Y")
+				F.Intrinsic.String.Build("Select Order_NO, Order_Line From V_Order_To_WO Where Job = '{0}' and Suffix = '{1}'",V.DataTable.DTOut(V.Local.i).WO!FieldValTrim,V.DataTable.DTOut(V.Local.i).Suffix!FieldValTrim,V.Local.sSql)
+				F.ODBC.Connection!con.OpenLocalRecordsetRO("rstSel",V.Local.sSQL)
+				F.Intrinsic.Control.If(V.ODBC.con!rstSel.EOF,=,False)
+					V.Local.sOrder.Set(V.ODBC.con!rstSel.FieldValTrim!ORDER_NO)
+					V.Local.sLine.Set(V.ODBC.con!rstSel.FieldValTrim!Order_Line)
+					F.Intrinsic.String.Build("[GSS_SO] Like '*{0}*' and [GSS_SO_Line] Like '*{1}*'",V.Local.sOrder.Trim,V.Local.sLine.Trim,V.Local.sFilter)
+					F.Intrinsic.Control.If(V.DataView.P21!VP21.Exists)
+						F.Data.DataView.Close("P21","VP21")
+					F.Intrinsic.Control.EndIf
+					F.Data.DataTable.AcceptChanges("P21")
+				
+					F.Data.DataView.Create("P21","VP21",22,V.Local.sFilter,"")
+'					F.Data.DataView.SetFilter("P21","VP21",V.Local.sFilter)
+					F.Intrinsic.Control.If(V.DataView.P21!VP21.RowCount--,<>,-1)
+						F.Data.DataView.SetValue("P21","VP21",V.DataView.P21!VP21.RowCount--,"GSS_WO",V.DataTable.DTOut(V.Local.i).WO!FieldValTrim,"GSS_Suffix",V.DataTable.DTOut(V.Local.i).Suffix!FieldValTrim,"GSS_Status",1,"GSS_Status_Message","")
+						F.Intrinsic.String.Build("Update Job_Header Set Comments_1 = '{0}' Where Job = '{1}' and Suffix = '{2}'",V.DataView.P21!VP21(V.DataView.P21!VP21.RowCount--).P21_CARRIERID!FieldValTrim,V.DataTable.DTOut(V.Local.i).WO!FieldValTrim,V.DataTable.DTOut(V.Local.i).Suffix!FieldValTrim,V.Local.sSql)
+						F.ODBC.Connection!Con.Execute(V.Local.sSql)
+						F.Intrinsic.String.Build("Update Job_Header Set Comments_2 = '{0}' Where Job = '{1}' and Suffix = '{2}'",V.DataView.P21!VP21(V.DataView.P21!VP21.RowCount--).P21_SHP2_CUSTNAME!FieldValTrim,V.DataTable.DTOut(V.Local.i).WO!FieldValTrim,V.DataTable.DTOut(V.Local.i).Suffix!FieldValTrim,V.Local.sSql)
+						F.ODBC.Connection!Con.Execute(V.Local.sSql)
+					F.Intrinsic.Control.EndIf
+				F.Intrinsic.Control.Else
+					F.Data.DataView.SetValue("P21","VP21",V.DataView.P21!VP21.RowCount--,"GSS_Status_Message","Unknown Error: Will need to Generate WO From SO inside Global Shop","Gss_Status",2)
+				F.Intrinsic.Control.EndIf
+				F.ODBC.Con!rstSel.Close
+			F.Intrinsic.Control.Else
+				F.Intrinsic.Control.SelectCase(V.DataTable.DTOut(V.Local.i).Status!FieldValTrim)
+					F.Intrinsic.Control.Case("R")
+						F.Data.DataView.SetValue("P21","VP21",V.DataView.P21!VP21.RowCount--,"GSS_Status_Message","SORT-BAD-RTR: Will need to Generate WO From SO inside Global Shop","Gss_Status",2)
+						
+					F.Intrinsic.Control.Case("A")
+						F.Data.DataView.SetValue("P21","VP21",V.DataView.P21!VP21.RowCount--,"GSS_Status_Message","SORT-BAD-RTR-ALT: Will need to Generate WO From SO inside Global Shop","Gss_Status",2)
+						
+					F.Intrinsic.Control.Case("B")
+						F.Data.DataView.SetValue("P21","VP21",V.DataView.P21!VP21.RowCount--,"GSS_Status_Message","SORT-GOOD-CALL-PROCESS-FAILED: Will need to Generate WO From SO inside Global Shop","Gss_Status",2)
+						
+					F.Intrinsic.Control.Case("X")
+						F.Data.DataView.SetValue("P21","VP21",V.DataView.P21!VP21.RowCount--,"GSS_Status_Message","SORT-BAD-CALL-RETURN: Will need to Generate WO From SO inside Global Shop","Gss_Status",2)
+					
+					F.Intrinsic.Control.CaseElse
+						F.Intrinsic.Control.If(V.DataTable.DTOut(V.Local.i).Status!FieldValTrim,<>,"")
+							F.Data.DataView.SetValue("P21","VP21",V.DataView.P21!VP21.RowCount--,"GSS_Status_Message","Unknown Error: Will need to Generate WO From SO inside Global Shop","Gss_Status",2)
+						F.Intrinsic.Control.EndIf
+						
+				F.Intrinsic.Control.EndSelect
+				
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.Next(V.Local.i)
+		F.Data.DataTable.Close("DTOut")
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.Control.Try
+		F.Data.DataTable.SaveToDB("P21","Con","GCG_5182_P21_PO_Line","P21_PO*!*P21_PO_LINE",256,V.Local.sFieldMap)
+		F.Data.DataTable.AcceptChanges("P21")
+	F.Intrinsic.Control.Catch
+		'ingnoring record level betrieve conflict 
+		F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,"21045")
+			F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+			F.Intrinsic.UI.Msgbox(V.Local.sError)
+			F.Intrinsic.Control.CallSub(Exit)
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.EndTry
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Create_WO_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+F.Intrinsic.Control.EndIf
+Program.Sub.Create_WO.End
+
+Program.Sub.Create_Part.Start
+F.Intrinsic.Control.SetErrorHandler("Create_Part_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sPart.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	V.Local.sPL.Declare(String,"")
+	V.Local.sP21Part.Declare(String,"")
+	V.Local.sDesc.Declare(String,"")
+	V.Local.sLongDesc.Declare(String,"")
+	V.Local.iLen.Declare(Long,0)
+	
+	F.Intrinsic.String.Replace(V.DataView.P21!VP21(V.Args.Index).P21_Part!FieldValTrim," ","",V.Local.sPart)
+	F.Intrinsic.String.Replace(V.Local.sPart.Trim,"/","",V.Local.sPart)
+	
+	F.Intrinsic.Control.If(V.Local.sPart.Left3,=,"CSF")
+		V.Local.sPL.Set("S4")
+	F.Intrinsic.Control.Else
+		V.Local.sPL.Set("S1")
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.String.Len(V.DataView.P21!VP21(V.Args.Index).P21_Description!FieldValTrim,V.Local.iLen)
+	
+	F.Intrinsic.Control.If(V.Local.iLen,>,30)
+		F.Intrinsic.String.Left(V.DataView.P21!VP21(V.Args.Index).P21_Description!FieldValTrim,30,V.Local.sDesc)
+		V.Local.sLongDesc.Set(V.DataView.P21!VP21(V.Args.Index).P21_Description!FieldValTrim)
+	F.Intrinsic.Control.Else
+		V.Local.sDesc.Set(V.DataView.P21!VP21(V.Args.Index).P21_Description!FieldValTrim)
+		V.Local.sLongDesc.Set("")
+	F.Intrinsic.Control.EndIf
+	
+	V.Local.sP21Part.Set(V.DataView.P21!VP21(V.Args.Index).P21_Part!FieldValTrim)
+	'need to see if Product line needs to be added to the custom table or if a defualt Product Line will be used.
+	F.Global.Inventory.CreatePart(V.Local.sPart.Trim,V.DataView.P21!VP21(V.Args.Index).P21_UM!FieldValTrim,V.Local.sDesc,"",V.Local.sPL,"F","",V.Local.sP21Part.Trim,V.DataView.P21!VP21(V.Args.Index).P21_Cost!FieldValTrim,"UPLOADED")
+	'need to create Router for new part.  Need to see if a Temp Router will be used
+	F.Intrinsic.String.Build("Select Part, Text From V_Inv_Extra_Text Where Rtrim(Part) = '{0}'",V.Local.sPart.Trim,V.Local.sSql)
+	F.Data.DataTable.CreateFromSQL("Text","con",V.Local.sSql,True)
+	
+	F.Intrinsic.Control.If(V.Local.sLongDesc.Trim,<>,"")
+		F.Intrinsic.Control.If(V.DataTable.Text.RowCount--,=,-1)
+			F.Data.DataTable.AddRow("Text","Part",V.Local.sPart.Trim,"Text",V.Local.sLongDesc)
+		F.Intrinsic.Control.Else
+			F.Data.DataTable.SetValue("Text",-1,"Part",V.Local.sPart.Trim,"Text",V.Local.sLongDesc)
+		F.Intrinsic.Control.EndIf
+	
+		F.Data.DataTable.SaveToDB("Text","con","Inv_Extra_Text","Part",3)
+
+	F.Intrinsic.Control.EndIf
+	
+	F.Data.DataTable.Close("Text")
+	
+	F.Intrinsic.Control.CallSub(Create_Router,"Index",V.Args.Index,"Part",V.Local.sPart.Trim,"PL",V.Local.sPL)
+	
+	F.Intrinsic.Variable.AddRV("Part",V.Local.sPart.Trim)
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Create_Part_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+F.Intrinsic.Control.EndIf
+Program.Sub.Create_Part.End
+
+Program.Sub.SO_Hdr.Start
+F.Intrinsic.Control.SetErrorHandler("SO_Hdr_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	V.Local.sDueDate.Declare(String,"")
+	V.Local.sOrderDate.Declare(String,"")
+	V.Local.sCust.Declare(String,"")
+	
+	'ORDUPL doesn't add to a already existing Sales Order so now just create new sales orders for new lines for already existing P21_PO's
+	
+'	F.Intrinsic.String.Build("Select Order_NO From V_Order_Header Where Customer_PO = '{0}'",V.DataView.P21!VP21(V.Args.Index).P21_PO!FieldValTrim,V.Local.sSql)
+'	F.ODBC.Connection!Con.OpenLocalRecordSetRO("OrdRst",V.Local.sSql)
+'	F.Intrinsic.Control.If(V.ODBC.Con!OrdRst.EOF)
+		F.Intrinsic.String.Format(V.DataView.P21!VP21(V.Args.Index).P21_Date_Due!FieldVal,"YYYYMMDD",V.Local.sDueDate)
+		F.Intrinsic.String.Format(V.DataView.P21!VP21(V.Args.Index).P21_Order_Date!FieldVal,"YYYYMMDD",V.Local.sOrderDate)
+		V.Local.sCust.Set(V.DataView.P21!VP21(V.Args.Index).P21_Vendor!FieldValTrim)
+		F.Data.DataTable.AddRow("ORDUPL","Transaction","O","CustomerNO",V.Local.sCust.Trim,"OrderDueDate",V.Local.sDueDate,"OrderDate",V.Local.sOrderDate,"CustomerPO",V.DataView.P21!VP21(V.Args.Index).P21_PO!FieldValTrim,"SHIPToName",V.DataView.P21!VP21(V.Args.Index).P21_SHP2_CustName!FieldValTrim,"ShipToAddress1",V.DataView.P21!VP21(V.Args.Index).P21_SHP2_CustAddress!FieldValTrim,"ShipToCity",V.DataView.P21!VP21(V.Args.Index).P21_SHP2_CustCity!FieldValTrim,"ShipToState",V.DataView.P21!VP21(V.Args.Index).P21_SHP2_CustState!FieldValTrim,"ShipToZip",V.DataView.P21!VP21(V.Args.Index).P21_SHP2_CustZip!FieldValTrim)
+	
+		F.Intrinsic.Control.If(V.DataView.P21!VP21(V.Args.Index).P21_Bill_CustName!FieldValTrim,<>,"")
+			F.Data.DataTable.AddRow("ORDUPLExtra","BillToName",V.DataView.P21!VP21(V.Args.Index).P21_Bill_CustName!FieldValTrim,"BillToAddress1",V.DataView.P21!VP21(V.Args.Index).P21_Bill_CustAddress!FieldValTrim,"BillToCity",V.DataView.P21!VP21(V.Args.Index).P21_Bill_CustCity!FieldValTrim,"BillToState",V.DataView.P21!VP21(V.Args.Index).P21_Bill_CustState!FieldValTrim,"BillToZip",V.DataView.P21!VP21(V.Args.Index).P21_Bill_CustZip!FieldValTrim)
+		F.Intrinsic.Control.EndIf
+		
+'	F.Intrinsic.Control.Else
+'		F.Intrinsic.String.Format(V.DataView.P21!VP21(V.Args.Index).P21_Date_Due!FieldVal,"YYYYMMDD",V.Local.sDueDate)
+'		F.Intrinsic.String.Format(V.DataView.P21!VP21(V.Args.Index).P21_Order_Date!FieldVal,"YYYYMMDD",V.Local.sOrderDate)
+'		F.Data.DataTable.AddRow("ORDUPL","Transaction","O","OrderNumber",V.ODBC.Con!OrdRst.FieldValTrim!Order_No,"CustomerNO",V.DataView.P21!VP21(V.Args.Index).P21_Vendor!FieldValTrim,"OrderDueDate",V.Local.sDueDate,"OrderDate",V.Local.sOrderDate,"CustomerPO",V.DataView.P21!VP21(V.Args.Index).P21_PO!FieldValTrim,"SHIPToName",V.DataView.P21!VP21(V.Args.Index).P21_SHP2_CustName!FieldValTrim,"ShipToAddress1",V.DataView.P21!VP21(V.Args.Index).P21_SHP2_CustAddress!FieldValTrim,"ShipToCity",V.DataView.P21!VP21(V.Args.Index).P21_SHP2_CustCity!FieldValTrim,"ShipToState",V.DataView.P21!VP21(V.Args.Index).P21_SHP2_CustState!FieldValTrim,"ShipToZip",V.DataView.P21!VP21(V.Args.Index).P21_SHP2_CustZip!FieldValTrim)
+'	F.Intrinsic.Control.EndIf
+'	F.ODBC.Con!OrdRst.Close
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("SO_Hdr_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+F.Intrinsic.Control.EndIf
+Program.Sub.SO_Hdr.End
+
+Program.Sub.SO_Lines.Start
+F.Intrinsic.Control.SetErrorHandler("SO_Lines_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sPart.Declare(String,"")
+	V.Local.sPL.Declare(String,"")
+	V.Local.sOrderDate.Declare(String,"")
+	V.Local.sDueDate.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	V.Local.sQty.Declare(String,"")
+	V.Local.sCost.Declare(String,"")
+	V.Local.sDesc.Declare(String,"")
+	
+	V.Local.sPart.Set(V.Args.Part)
+	F.Intrinsic.String.Format(V.DataView.P21!VP21(V.Args.Index).P21_Date_Due!FieldVal,"YYYYMMDD",V.Local.sDueDate)
+	F.Intrinsic.String.Format(V.DataView.P21!VP21(V.Args.Index).P21_Order_Date!FieldVal,"YYYYMMDD",V.Local.sOrderDate)
+	
+	F.Intrinsic.String.Replace(V.DataView.P21!VP21(V.Args.Index).P21_Quantity!FieldVal,".","",V.Local.sQty)
+	F.Intrinsic.Math.Mult(V.DataView.P21!VP21(V.Args.Index).P21_Quantity!FieldVal,10000,V.Local.sQty.Long)
+	F.Intrinsic.Math.Mult(V.DataView.P21!VP21(V.Args.Index).P21_Cost!FieldVal,1000000,V.Local.sCost.Long)
+	F.Intrinsic.String.LPad(V.Local.sQty,"0",13,V.Local.sQty)
+	F.Intrinsic.String.LPad(V.Local.sCost,"0",13,V.Local.sCost)
+	
+	F.Intrinsic.String.Build("Select Product_Line From V_Inventory_Mstr Where Part = '{0}'",V.Local.sPart.Trim,V.Local.sSql)
+	F.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSql,V.Local.sPL)
+	F.Data.DataTable.AddRow("ORDUPLLines","QtyOrdered",V.Local.sQty,"UM",V.DataView.P21!VP21(V.Args.Index).P21_UM!FieldValTrim,"PartNumber",V.Local.sPart.Trim,"PartLoc","","QuotedPrice",V.Local.sCost,"PartDesc",V.Local.sDesc,"LineOrderDate",V.Local.sOrderDate,"PL",V.Local.sPL.Trim,"UserField1",V.DataView.P21!VP21(V.Args.Index).P21_PO_Line!FieldVal,"Router",V.Local.sPart.Trim,"LinePromiseDate",V.Local.sDueDate,"LineType","S")
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("SO_Lines_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+F.Intrinsic.Control.EndIf
+Program.Sub.SO_Lines.End
+
+Program.Sub.Cleanup_P21Table.Start
+F.Intrinsic.Control.SetErrorHandler("Cleanup_P21Table_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	
+	'RLK - 4/10/2019 - Table Clean up will be done manually Custom gridview created to show records in custom table and the ability to delete those records.
+	'removing processed records that have already been invoiced in Global Shop
+	V.Local.sSql.Set("Delete From GCG_5182_P21_PO_Line Where GSS_SO Not In(Select Distinct Order_No From V_Order_Header) and GSS_SO <> ''")
+	
+	F.ODBC.Connection!Con.Execute(V.Local.sSql)
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Cleanup_P21Table_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+F.Intrinsic.Control.EndIf
+Program.Sub.Cleanup_P21Table.End
+
+Program.Sub.Create_Router.Start
+F.Intrinsic.Control.SetErrorHandler("Create_Router_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sSeq.Declare(String,"")
+	V.Local.sQty.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	V.Local.sDesc.Declare(String,"")
+	V.Local.iLen.Declare(Long,0)
+	V.Local.sOp.Declare(String,"")
+	
+	F.Intrinsic.String.Len(V.DataView.P21!VP21(V.Args.Index).P21_Description!FieldValTrim,V.Local.iLen)
+	
+	F.Intrinsic.Control.If(V.Local.iLen,>,30)
+		F.Intrinsic.String.Left(V.DataView.P21!VP21(V.Args.Index).P21_Description!FieldValTrim,30,V.Local.sDesc)
+	F.Intrinsic.Control.Else
+		V.Local.sDesc.Set(V.DataView.P21!VP21(V.Args.Index).P21_Description!FieldValTrim)
+	F.Intrinsic.Control.EndIf
+	
+	F.Global.General.ReadOption("401113",3,"",V.Local.sSeq)
+	
+	F.Intrinsic.String.LPad(V.Local.sSeq,"0",6,V.Local.sSeq)
+	
+	F.Intrinsic.String.Format(V.DataView.P21!VP21(V.Args.Index).P21_QUANTITY!FieldValTrim,"0.00",V.Local.sQty)
+	
+	F.Global.General.ReadOption("401116",1,"","0002",V.Local.sOp)
+	
+	F.Data.DataTable.AddRow("6021","RouterNum",V.Args.Part,"RouterDesc",V.Local.sDesc,"RunTimeMatlQty",V.Local.sQty,"Seq",V.Local.sSeq,"LineType","L","PartNum",V.Args.Part,"PartStepDesc","BUILD AS PER DRAWING","UM",V.DataView.P21!VP21(V.Args.Index).P21_UM!FieldValTrim,"PL",V.Args.PL,"OperationCodeVend",V.Local.sOp)
+	
+	F.Intrinsic.Control.CallSub(6021Sync)
+	
+	F.Data.DataTable.AcceptChanges("6021")
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Create_Router_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+F.Intrinsic.Control.EndIf
+Program.Sub.Create_Router.End
+
+Program.Sub.Call_GAB_Script.Start
+F.Intrinsic.Control.SetErrorHandler("Call_GAB_Script_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sGab.Declare(String,"")
+	V.Local.iRet.Declare(Long,0)
+	V.Local.sSql.Declare(String,"")
+
+	'making sure the gss wo is making it into the table.  There are instances where that information is not getting saved back to the custom table.  
+	
+'	V.Local.sSql.Set("Select P21_PO, P21_PO_LINE, rtrim(GSS_SO)+rtrim(GSS_SO_LINE) as SOLINE, GSS_WO, GSS_SUFFIX, GSS_STATUS, GSS_STATUS_MESSAGE From GCG_5182_P21_PO_Line Where (GSS_STATUS = 1 OR GSS_STATUS = 2) and (GSS_WO = '' or GSS_WO is Null)")
+'	
+'	F.Intrinsic.Control.If(V.DataTable.P21.Exists)
+'		F.Data.DataTable.Close("P21")
+'	F.Intrinsic.Control.EndIf
+'	
+'	F.Data.DataTable.CreateFromSQL("P21","con",V.Local.sSql,True)
+'	
+'	V.Local.sSql.Set("Select rtrim(Order_No)+rtrim(Order_Line) as SOLINE, Job as GSS_WO From V_Order_To_WO")
+'	F.Data.Dictionary.CreateFromSQL("Job","con",V.Local.sSql)
+'	F.Data.Dictionary.SetDefaultReturn("Job"," ")
+'	
+'	F.Data.DataTable.FillFromDictionary("P21","Job","SOLINE","GSS_WO")
+'	
+'	F.Data.Dictionary.Close("Job")
+'	
+'	V.Local.sSql.Set("Select rtrim(Order_No)+rtrim(Order_Line) as SOLINE, Suffix as GSS_SUFFIX From V_Order_To_WO")
+'	F.Data.Dictionary.CreateFromSQL("Suffix","con",V.Local.sSql)
+'	F.Data.Dictionary.SetDefaultReturn("Suffix"," ")
+'	
+'	F.Data.DataTable.FillFromDictionary("P21","Suffix","SOLINE","GSS_SUFFIX")
+'	
+'	F.Data.Dictionary.Close("Suffix")
+'	
+'	F.Data.DataView.Create("P21","WO",22,"[GSS_WO] <> ' '","")
+'	F.Intrinsic.Control.If(V.DataView.P21!WO.RowCount--,<>,-1)
+'		F.Data.DataView.SetValue("P21","WO",-1,"GSS_Status",1,"GSS_Status_Message","")
+'	F.Intrinsic.Control.EndIf
+'	F.Data.DataView.Close("P21","WO")
+'	
+'	F.Intrinsic.Control.Try
+'		F.Data.DataTable.SaveToDB("P21","Con","GCG_5182_P21_PO_Line","P21_PO*!*P21_PO_LINE",7,"P21_PO@!@P21_PO*!*P21_PO_LINE@!@P21_PO_LINE*!*GSS_WO@!@GSS_WO*!*GSS_SUFFIX@!@GSS_SUFFIX*!*GSS_STATUS@!@GSS_STATUS*!*GSS_STATUS_MESSAGE@!@GSS_STATUS_MESSAGE")
+'	F.Intrinsic.Control.Catch
+'		'ingnoring record level betrieve conflict 
+'		F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,"21045")
+'			F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+'			F.Intrinsic.UI.Msgbox(V.Local.sError)
+'			F.Intrinsic.Control.CallSub(Exit)
+'		F.Intrinsic.Control.EndIf
+'	F.Intrinsic.Control.EndTry
+'	
+'	F.Data.DataTable.Close("P21")
+	
+	F.Intrinsic.String.Build("{0}\GAB\GAS\GCG_5182_P21_Integration.g2u",V.Caller.PluginsDir,V.Local.sGab)
+	
+	F.Global.Task.CallAsyncGas(V.Local.sGab,"",2,V.Local.iRet)
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Call_GAB_Script_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+F.Intrinsic.Control.EndIf
+Program.Sub.Call_GAB_Script.End
+
+Program.Sub.Update_WO_Flag.Start
+F.Intrinsic.Control.SetErrorHandler("Update_WO_Flag_Err")
+F.Intrinsic.Control.ClearErrors
+	V.Local.sError.Declare(String,"")
+	V.Local.sFields.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	V.Local.bRet.Declare(Boolean,False)
+	
+	V.Local.sFields.Set("P21_PO, P21_PO_Line, P21_Vendor, P21_Part, P21_Description, P21_Location, P21_Quantity, P21_Cost, P21_UM, P21_Date_Due, P21_Order_Date, P21_SHP2_CustName, P21_SHP2_CustAddress, P21_SHP2_CustState, P21_SHP2_CustCity, P21_SHP2_CustZip, P21_Bill_CustName, P21_Bill_CustAddress,P21_Bill_CustState,P21_Bill_CustCity,P21_Bill_CustZip, P21_SO, GSS_SO, GSS_SO_Line, GSS_WO, GSS_Suffix, GSS_Status, GSS_Status_Message, P21_Status, P21_Status_Message, GSS_WO_Closed, P21_PO_Closed, P21_SPECIALORDER, P21_CARRIERID")
+	
+	F.Intrinsic.Variable.ArgExists("Screen",V.Local.bRet)
+	
+	F.Intrinsic.Control.If(V.Local.bRet)
+		F.Intrinsic.Control.If(V.Args.Screen,=,"ON-LINE")
+			F.Intrinsic.String.Build("Select IF(GSS_SUFFIX <> '',GSS_WO+GSS_Suffix,GSS_WO) as JS, {0} From GCG_5182_P21_PO_LINE where GSS_WO_CLOSED = 0",V.Local.sFields,V.Local.sSql)
+			F.Data.DataTable.CreateFromSQL("P21Update","con",V.Local.sSql,True)
+			
+				F.Intrinsic.Control.If(V.DataTable.P21Update.RowCount--,<>,-1)
+				F.Data.Dictionary.CreateFromSQL("JobClosed","con","Select rtrim(Job+Suffix) as JS, Cast(1 as BIT) as  GSS_WO_CLOSED From V_Job_Header Where Date_Closed <> '1900-01-01'")
+				
+				F.Data.Dictionary.SetDefaultReturn("JobClosed",False)
+				
+				F.Data.DataTable.FillFromDictionary("P21Update","JobClosed","JS","GSS_WO_Closed")
+				
+				V.Local.sFields.Set("P21_PO@!@P21_PO*!*P21_PO_Line@!@P21_PO_Line*!*P21_Vendor@!@P21_Vendor*!*P21_Part@!@P21_Part*!*P21_Description@!@P21_Description*!*P21_Location@!@P21_Location*!*P21_Quantity@!@P21_Quantity*!*P21_Cost@!@P21_Cost*!*P21_UM@!@P21_UM*!*P21_Date_Due@!@P21_Date_Due*!*P21_Order_Date@!@P21_Order_Date*!*P21_SHP2_CustName@!@P21_SHP2_CustName*!*P21_SHP2_CustAddress@!@P21_SHP2_CustAddress*!*P21_SHP2_CustState@!@P21_SHP2_CustState*!*P21_SHP2_CustCity@!@P21_SHP2_CustCity*!*P21_SHP2_CustZip@!@P21_SHP2_CustZip*!*P21_Bill_CustName@!@P21_Bill_CustName*!*P21_Bill_CustAddress@!@P21_Bill_CustAddress*!*P21_Bill_CustState@!@P21_Bill_CustState*!*P21_Bill_CustCity@!@P21_Bill_CustCity*!*P21_Bill_CustZip@!@P21_Bill_CustZip*!*P21_SO@!@P21_SO*!*GSS_SO@!@GSS_SO*!*GSS_SO_Line@!@GSS_SO_Line*!*GSS_WO@!@GSS_WO*!*GSS_Suffix@!@GSS_Suffix*!*GSS_Status@!@GSS_Status*!*GSS_Status_Message@!@GSS_Status_Message*!*P21_Status@!@P21_Status*!*P21_Status_Message@!@P21_Status_Message*!*GSS_WO_Closed@!@GSS_WO_Closed*!*P21_PO_Closed@!@P21_PO_Closed")
+				
+				F.Intrinsic.Control.Try
+					F.Data.DataTable.SaveToDB("P21Update","con","GCG_5182_P21_PO_Line","P21_PO*!*P21_PO_Line*!*GSS_WO*!*GSS_Suffix",2,V.Local.sFields)
+				F.Intrinsic.Control.Catch
+					'ingnoring record level betrieve conflict 
+					F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,"21045")
+						F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+						F.Intrinsic.UI.Msgbox(V.Local.sError)
+						F.Intrinsic.Control.CallSub(Exit)
+					F.Intrinsic.Control.EndIf
+				F.Intrinsic.Control.EndTry
+			F.Intrinsic.Control.EndIf
+			F.Data.DataTable.Close("P21Update")
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Update_WO_Flag_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Integration.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Exit)
+F.Intrinsic.Control.EndIf
+Program.Sub.Update_WO_Flag.End
