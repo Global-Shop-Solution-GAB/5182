@@ -1,0 +1,228 @@
+Program.Sub.ScreenSU.Start
+Gui.FormP21Not..Create
+Gui.FormP21Not..Caption("Ship Notification on Special Orders to TDC")
+Gui.FormP21Not..Size(5940,3165)
+Gui.FormP21Not..MinX(0)
+Gui.FormP21Not..MinY(0)
+Gui.FormP21Not..Position(0,0)
+Gui.FormP21Not..BackColor(-2147483633)
+Gui.FormP21Not..MousePointer(0)
+Gui.FormP21Not..Event(UnLoad,FormP21Not_UnLoad)
+Gui.FormP21Not.lblP21PO.Create(Label,"P21 Purchase Order",True,1935,255,0,105,195,True,0,"Arial",8,-2147483633,0)
+Gui.FormP21Not.txtP21PO.Create(TextBox,"",True,2010,300,0,105,420,True,0,"Arial",8,-2147483643,1)
+Gui.FormP21Not.txtP21PO.Event(LostFocus,txtP21PO_LostFocus)
+Gui.FormP21Not.txtP21PO.Event(KeyPressEnter,txtP21PO_KeyPressEnter)
+Gui.FormP21Not.cmdP21PO.Create(Button)
+Gui.FormP21Not.cmdP21PO.Size(465,375)
+Gui.FormP21Not.cmdP21PO.Position(2205,390)
+Gui.FormP21Not.cmdP21PO.Caption("^")
+Gui.FormP21Not.cmdP21PO.Event(Click,cmdP21PO_Click)
+Gui.FormP21Not.ddlUM.Create(DropDownList)
+Gui.FormP21Not.ddlUM.Size(2520,330)
+Gui.FormP21Not.ddlUM.Position(105,1185)
+Gui.FormP21Not.lblUM.Create(Label,"Shipping Unit of Measure",True,1935,255,0,105,960,True,0,"Arial",8,-2147483633,0)
+Gui.FormP21Not.lblQty.Create(Label,"Qty Shipped:",True,1935,255,0,3000,960,True,0,"Arial",8,-2147483633,0)
+Gui.FormP21Not.txtQty.Create(TextBox,"",True,1320,300,0,3000,1185,True,0,"Arial",8,-2147483643,1)
+Gui.FormP21Not.txtQty.NumericOnly(2)
+Gui.FormP21Not.cmdSend.Create(Button)
+Gui.FormP21Not.cmdSend.Size(855,375)
+Gui.FormP21Not.cmdSend.Position(105,2400)
+Gui.FormP21Not.cmdSend.Caption("Send")
+Gui.FormP21Not.cmdSend.Event(Click,cmdSend_Click)
+Gui.FormP21Not.lblLane.Create(Label,"Shipping Lane",True,1935,255,0,105,1710,True,0,"Arial",8,-2147483633,0)
+Gui.FormP21Not.txtLane.Create(TextBox,"",True,1320,300,0,105,1935,True,0,"Arial",8,-2147483643,1)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+
+	Gui.FormP21Not.txtQty.Text("0")
+	Gui.FormP21Not.ddlUM.AddItem(" ",0)
+	Gui.FormP21Not.ddlUM.AddItem("Each",1)
+	Gui.FormP21Not.ddlUM.AddItem("Box",2)
+	Gui.FormP21Not.ddlUM.AddItem("Pallet/Cradle",3)
+	
+	Gui.FormP21Not..Show
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Notification.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.CallSub(FormP21Not_UnLoad)
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.cmdP21PO_Click.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+	V.Local.sTitles.Declare(String,"")
+	V.Local.sWidths.Declare(String,"")
+	V.Local.sRet.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	
+	F.Intrinsic.UI.SetBrowserHotTypeAhead(True)
+	
+	V.Local.sSql.Set("Select P21_PO From GCG_5182_P21_PO_Line Where P21_CarrierID <> '' Order By P21_PO")
+	V.Local.sTitles.Set("P21 Purchase Order")
+	V.Local.sWidths.Set("1800")
+	
+	F.Intrinsic.String.Split(V.Local.sTitles,"*!*",V.Local.sTitles)
+	F.Intrinsic.String.Split(V.Local.sWidths,"*!*",V.Local.sWidths)
+	
+	F.ODBC.Connection!Con.OpenCompanyConnection
+	F.Intrinsic.UI.Browser("Select P21 Purchase Order","con",V.Local.sSql,V.Local.sTitles,V.Local.sWidths,10200,9000,V.Local.sRet)
+	F.ODBC.Connection!Con.Close
+	F.Intrinsic.Control.If(V.Local.sRet,<>,"***CANCEL***")
+		F.Intrinsic.String.Split(V.Local.sRet,"*!*",V.Local.sRet)
+		Gui.FormP21Not.txtP21PO.Text(V.Local.sRet)
+		
+		F.Intrinsic.Control.CallSub(txtP21PO_LostFocus)
+		
+	F.Intrinsic.Control.EndIf
+
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Notification.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.CallSub(FormP21Not_UnLoad)
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.cmdP21PO_Click.End
+
+Program.Sub.FormP21Not_UnLoad.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+
+	F.Intrinsic.Control.End
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Notification.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.End
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.FormP21Not_UnLoad.End
+
+Program.Sub.cmdSend_Click.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+	V.Local.sSubject.Declare(String,"")
+	v.Local.sBody.Declare(String,"")
+	V.Local.sLane.Declare(String,"")
+	V.Local.sQty.Declare(String,"")
+	V.Local.sUM.Declare(String,"")
+	v.Local.iID.Declare(Long,0)
+	V.Local.sSender.Declare(String,"")
+	V.Local.i.Declare(Long,0)
+	V.Local.sSO.Declare(String)
+	
+	V.Local.sLane.Set(V.Screen.FormP21Not!txtLane.Text)
+	V.Local.sUM.Set(V.Screen.FormP21Not!ddlUM.Text)
+	V.Local.sQty.Set(V.Screen.FormP21Not!txtQty.Text)
+	
+	f.Global.Security.GetUserId(v.Caller.User,v.Caller.CompanyCode,v.local.iID)
+	
+'	F.Intrinsic.String.Build("{0}-{1}",V.DataTable.P21(V.DataTable.P21.RowCount--).GSS_SO!FieldValTrim,V.DataTable.P21(V.DataTable.P21.RowCount--).GSS_SO_Line!FieldValTrim,V.Local.sSO)
+	F.Intrinsic.String.Build("{0}",V.DataTable.P21(V.DataTable.P21.RowCount--).P21_SO!FieldValTrim,V.Local.sSO)
+	F.Intrinsic.String.Build("P21 Special Order P/O {0} staged for shipping to {1}",V.DataTable.P21(V.DataTable.P21.RowCount--).P21_PO!FieldValTrim,V.DataTable.P21(V.DataTable.P21.RowCount--).P21_SHP2_CustName!FieldValTrim,V.Local.sSubject)
+	
+	F.Intrinsic.String.Build("Purchase Order {0} has {1} {2} staged for shipping in lane {3}",V.DataTable.P21(V.DataTable.P21.RowCount--).P21_PO!FieldValTrim,V.Local.sQty,V.Local.sUM,V.Local.sLane,V.Local.sBody)
+	F.Intrinsic.String.Build("{0}{1}{1}Branch:{2}{2}{3}{1}Sales Order:{2}{4}{1}Customer:{2}{5}{1}Ship Via:{2}{6}",V.Local.sBody,V.Ambient.NewLine,V.Ambient.Tab,V.DataTable.P21(V.DataTable.P21.RowCount--).P21_SHP2_CustName!FieldValTrim,V.Local.sSO.Trim,V.DataTable.P21(V.DataTable.P21.RowCount--).P21_Bill_CustName!FieldValTrim,V.DataTable.P21(V.DataTable.P21.RowCount--).P21_CarrierID!FieldValTrim,V.Local.sBody)
+	
+'	F.Intrinsic.String.Replace(V.Ambient.CompanyName," ","",V.Local.sSender)
+'	F.Intrinsic.String.Replace(V.Local.sSender,".","",V.Local.sSender)
+'	F.Intrinsic.String.Build("Noreply@{0}.com",V.Local.sSender,V.Local.sSender)
+	V.Local.sSender.Set("noreply@gensco.com")
+	
+	F.ODBC.Connection!Con.OpenCompanyConnection
+	F.Data.DataTable.CreateFromSQL("Email","con","Select Group_Email From GCG_5182_Group_Email",True)
+	F.ODBC.Connection!con.Close
+	
+	F.Intrinsic.Control.For(V.Local.i,0,V.DataTable.Email.RowCount--,1)
+		F.Global.Messaging.QueueMessage(V.Caller.CompanyCode,v.Local.iID,V.Caller.Caller,v.Local.sSubject,V.Local.sSender,V.DataTable.Email(V.Local.i).Group_Email!FieldValTrim,v.Local.sBody,-1,"",False,"","","","","","","","",True)
+	F.Intrinsic.Control.Next(V.Local.i)
+	
+	F.Data.DataTable.Close("Email")
+	
+	F.Intrinsic.Control.CallSub(FormP21Not_UnLoad)
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Notification.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.CallSub(FormP21Not_UnLoad)
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.cmdSend_Click.End
+
+Program.Sub.txtP21PO_KeyPressEnter.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+
+	F.Intrinsic.Control.CallSub(txtP21PO_LostFocus)
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Notification.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.CallSub(FormP21Not_UnLoad)
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.txtP21PO_KeyPressEnter.End
+
+Program.Sub.txtP21PO_LostFocus.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+	V.Local.sPo.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	
+	V.Local.sPo.Set(V.Screen.FormP21Not!txtP21PO.Text)
+	
+	F.Intrinsic.Control.If(V.Local.sPo.Trim,=,"")
+		F.Intrinsic.Control.ExitSub
+	F.Intrinsic.Control.EndIf
+	
+	F.ODBC.Connection!Con.OpenCompanyConnection
+	F.Intrinsic.String.Build("Select P21_PO,P21_SO, P21_SHP2_CustName, GSS_SO, GSS_SO_Line, P21_Bill_CustName, P21_CarrierID From GCG_5182_P21_PO_Line Where P21_PO = '{0}'",V.Local.sPo.Trim,V.Local.sSql)
+	F.Intrinsic.Control.If(V.DataTable.P21.Exists)
+		F.Data.DataTable.Close("P21")
+	F.Intrinsic.Control.EndIf
+	
+	F.Data.DataTable.CreateFromSQL("P21","con",V.Local.sSql,True)
+	
+	F.Intrinsic.Control.If(V.DataTable.P21.RowCount--,=,-1)
+		F.Intrinsic.UI.Msgbox("P21 PO has not been Sent to GSS.")
+		Gui.FormP21Not.txtLane.Text("")
+		gui.FormP21Not.txtP21PO.Text("")
+		Gui.FormP21Not.txtQty.Text("0")
+		Gui.FormP21Not.ddlUM.Text("")
+	F.Intrinsic.Control.EndIf
+	
+	F.ODBC.Connection!Con.Close
+
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Notification.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.CallSub(FormP21Not_UnLoad)
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.txtP21PO_LostFocus.End
