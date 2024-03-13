@@ -1,0 +1,177 @@
+Program.Sub.ScreenSU.Start
+Gui.SpecialOrderEmails..Create
+Gui.SpecialOrderEmails..Caption("Special Order Group Emails")
+Gui.SpecialOrderEmails..Size(6030,6825)
+Gui.SpecialOrderEmails..MinX(0)
+Gui.SpecialOrderEmails..MinY(0)
+Gui.SpecialOrderEmails..Position(0,0)
+Gui.SpecialOrderEmails..BackColor(-2147483633)
+Gui.SpecialOrderEmails..MousePointer(0)
+Gui.SpecialOrderEmails..Event(UnLoad,Form_UnLoad)
+Gui.SpecialOrderEmails.GsGridControl1.Create(GsGridControl)
+Gui.SpecialOrderEmails.GsGridControl1.Size(5760,5775)
+Gui.SpecialOrderEmails.GsGridControl1.Position(75,675)
+Gui.SpecialOrderEmails.GsGridControl1.Event(RowCellClick,GsGridControl1_RowCellClick)
+Gui.SpecialOrderEmails.lblSpec.Create(Label,"Special Order Emails",True,1935,255,0,105,90,True,0,"Arial",8,-2147483633,0)
+Gui.SpecialOrderEmails.txtSpec.Create(TextBox,"",True,3210,300,0,75,315,True,0,"Arial",8,-2147483643,1)
+Gui.SpecialOrderEmails.txtSpec.MaxLength(100)
+Gui.SpecialOrderEmails.cmdAdd.Create(Button)
+Gui.SpecialOrderEmails.cmdAdd.Size(855,375)
+Gui.SpecialOrderEmails.cmdAdd.Position(3360,285)
+Gui.SpecialOrderEmails.cmdAdd.Caption("Add")
+Gui.SpecialOrderEmails.cmdAdd.Event(Click,cmdAdd_Click)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+
+	F.Intrinsic.Control.CallSub(Get_Data)
+	F.Intrinsic.Control.CallSub(Set_Properties)
+	
+	Gui.SpecialOrderEmails..Show
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Special_Email.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.CallSub(Form_UnLoad)
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.Main.End
+
+Program.Sub.cmdAdd_Click.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+	V.Local.iRet.Declare(Long,0)
+	V.Local.sEmail.Declare(String,"")
+	
+	F.ODBC.Connection!Con.OpenCompanyConnection
+	
+	F.ODBC.Connection!Con.GetID("GCG_5182_Group_Email","Rec_No",True,V.Local.iRet)
+	
+	V.Local.sEmail.Set(V.Screen.SpecialOrderEmails!txtSpec.Text)
+	
+	F.Data.DataTable.AddRow("GrpEml","Rec_No",V.Local.iRet,"Group_Email",V.Local.sEmail.Trim)
+	
+	F.Data.DataTable.SaveToDB("GrpEml","Con","GCG_5182_Group_Email","Rec_No",3,"Rec_No@!@Rec_No*!*Group_Email@!@Group_Email")
+	
+	F.Data.DataTable.AcceptChanges("GrpEml")
+	
+	F.ODBC.Connection!Con.Close
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Special_Email.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.CallSub(Form_UnLoad)
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.cmdAdd_Click.End
+
+Program.Sub.GsGridControl1_RowCellClick.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	
+	F.Intrinsic.Control.If(V.Args.Column.UCase,=,"DELETE")
+		F.ODBC.Connection!Con.OpenCompanyConnection
+		F.Intrinsic.String.Build("Delete From GCG_5182_Group_Email Where Rec_No = {0}",V.DataTable.GrpEml(V.Args.RowIndex).Rec_No!FieldValLong,V.Local.sSql)
+		F.ODBC.Connection!Con.Execute(V.Local.sSql)
+		F.ODBC.Connection!Con.Close
+		F.Data.DataTable.DeleteRow("GrpEml",V.Args.RowIndex)
+		F.Data.DataTable.AcceptChanges("GrpEml")
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Special_Email.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.CallSub(Form_UnLoad)
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.GsGridControl1_RowCellClick.End
+
+Program.Sub.Form_UnLoad.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+
+	F.Intrinsic.Control.End
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Special_Email.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.End
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.Form_UnLoad.End
+
+Program.Sub.Get_Data.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+	V.Local.sSql.Declare(String,"")
+	
+	F.Intrinsic.String.Build("Select Rec_No, Group_Email From GCG_5182_Group_Email","",V.Local.sSql)
+	F.ODBC.Connection!Con.OpenCompanyConnection
+	
+	F.Data.DataTable.CreateFromSQL("GrpEml","con",V.Local.sSql,True)
+	F.Data.DataTable.AddColumn("GrpEml","Delete","String")
+	
+	F.ODBC.Connection!Con.Close
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Special_Email.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.CallSub(Form_UnLoad)
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.Get_Data.End
+
+Program.Sub.Set_Properties.Start
+F.Intrinsic.Control.Try
+	V.Local.sError.Declare(String,"")
+
+	Gui.SpecialOrderEmails.GsGridControl1.AddGridviewFromDatatable("GGrpEml","GrpEml")
+	
+	Gui.SpecialOrderEmails.GsGridControl1.SetGridviewProperty("GGrpEml","Editable",False)
+	Gui.SpecialOrderEmails.GsGridControl1.SetGridviewProperty("GGrpEml","ReadOnly",True)
+	
+	Gui.SpecialOrderEmails.GsGridControl1.SetColumnProperty("GGrpEml","Rec_No","HeaderBackColor","Green")
+	Gui.SpecialOrderEmails.GsGridControl1.SetColumnProperty("GGrpEml","Rec_No","HeaderForeColor","White")
+	Gui.SpecialOrderEmails.GsGridControl1.SetColumnProperty("GGrpEml","Rec_No","Visible",False)
+	Gui.SpecialOrderEmails.GsGridControl1.SetColumnProperty("GGrpEml","Group_Email","HeaderBackColor","Green")
+	Gui.SpecialOrderEmails.GsGridControl1.SetColumnProperty("GGrpEml","Group_Email","HeaderForeColor","White")
+	Gui.SpecialOrderEmails.GsGridControl1.SetColumnProperty("GGrpEml","Group_Email","Caption","Group Email")
+	Gui.SpecialOrderEmails.GsGridControl1.SetColumnProperty("GGrpEml","Delete","HeaderBackColor","Green")
+	Gui.SpecialOrderEmails.GsGridControl1.SetColumnProperty("GGrpEml","Delete","HeaderForeColor","White")
+	Gui.SpecialOrderEmails.GsGridControl1.SetColumnProperty("GGrpEml","Delete","Caption"," ")
+	Gui.SpecialOrderEmails.GsGridControl1.SetColumnProperty("GGrpEml","Delete","MaxWidth","75")
+	Gui.SpecialOrderEmails.GsGridControl1.ColumnEdit("GGrpEml","Delete","EditorButton","Delete")
+	
+	Gui.SpecialOrderEmails.GsGridControl1.MainView("GGrpEml")
+	
+	F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Catch
+	F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+		F.Intrinsic.String.Build("Project: {0}{1}Subroutine: {2}{1}Error Occurred {3} with description {4}","GCG_5182_P21_Special_Email.g2u",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+		F.Intrinsic.UI.Msgbox(V.Local.sError)
+		F.Intrinsic.Control.CallSub(Form_UnLoad)
+	F.Intrinsic.Control.EndIf
+Function.Intrinsic.Control.EndTry
+Program.Sub.Set_Properties.End
