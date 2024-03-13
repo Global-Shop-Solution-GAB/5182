@@ -1,0 +1,193 @@
+Program.Sub.ScreenSU.Start
+Gui.fmMSG..Create
+Gui.fmMSG..Size(6825,1815)
+Gui.fmMSG..MinX(0)
+Gui.fmMSG..MinY(0)
+Gui.fmMSG..Position(0,0)
+Gui.fmMSG..BackColor(-2147483633)
+Gui.fmMSG..MousePointer(0)
+Gui.fmMSG..Caption("Final labor sequence")
+Gui.fmMSG..FontSize(12)
+Gui.fmMSG..Event(UnLoad,fmMSG_UnLoad)
+Gui.fmMSG..AlwaysOnTop(True)
+Gui.fmMSG..ControlBox(False)
+Gui.fmMSG..MaxButton(False)
+Gui.fmMSG..MinButton(False)
+Gui.fmMSG..Moveable(False)
+Gui.fmMSG.lbl1.Create(Label,"Do you wish to close the work order and clear commitments?",True,6450,315,0,60,150,True,0,"Arial",12,-2147483633,0)
+Gui.fmMSG.cmdYES.Create(Button)
+Gui.fmMSG.cmdYES.Size(1395,570)
+Gui.fmMSG.cmdYES.Position(1305,465)
+Gui.fmMSG.cmdYES.Caption("YES")
+Gui.fmMSG.cmdYES.FontSize(16)
+Gui.fmMSG.cmdYES.FontStyle(True,False,False,False,False)
+Gui.fmMSG.cmdYES.Event(Click,cmdYES_Click)
+Gui.fmMSG.cmdNO.Create(Button)
+Gui.fmMSG.cmdNO.Size(1395,570)
+Gui.fmMSG.cmdNO.Position(3450,465)
+Gui.fmMSG.cmdNO.Caption("NO")
+Gui.fmMSG.cmdNO.FontSize(16)
+Gui.fmMSG.cmdNO.FontStyle(True,False,False,False,False)
+Gui.fmMSG.cmdNO.Event(Click,cmdNO_Click)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+V.Global.sJOB.Declare
+V.Global.sSUFFIX.Declare
+V.Global.sSEQ.Declare
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+V.Local.sSQL.Declare(String,"")
+V.Local.sDEL.Declare(String,"")
+V.Local.iRET.Declare(Long,0)
+V.Local.sOp.Declare(String,"")
+
+F.Intrinsic.Control.SelectCase(V.Caller.Hook)
+	F.Intrinsic.Control.Case(15890)
+		F.Global.General.ReadOption("401116",1,"","0002",V.Local.sOp)
+		F.Intrinsic.Control.If(V.Passed.000003.Trim,<>,"Y")
+			F.Intrinsic.Control.End
+		F.Intrinsic.Control.EndIf
+			V.Global.sJOB.Set(V.Passed.000004.Trim)
+			F.Intrinsic.String.Split(V.Global.sJOB,"-",V.Global.sJOB)
+			V.Global.sSUFFIX.Set(V.Global.sJOB(1))
+			V.Global.sJOB.RedimPreserve(0,0)
+			V.Global.sSEQ.Set(V.Passed.000005.Trim)
+			F.Intrinsic.String.LPad(V.Global.sSEQ,"0",6,V.Global.sSEQ)
+			F.Intrinsic.String.Build("Select OPERATION from V_JOB_OPERATIONS where JOB = '{0}' and SUFFIX = '{1}' and SEQ = '{2}'",V.Global.sJOB.Trim,V.Global.sSUFFIX.Trim,V.Global.sSEQ.Trim,V.Local.sSQL)
+			F.ODBC.Connection!con.OpenCompanyConnection
+			F.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSQL,V.Local.sSQL)
+			F.ODBC.Connection!con.Close
+		F.Intrinsic.Control.If(V.Local.sSQL.Trim,=,V.Local.sOp)
+			F.Intrinsic.Control.CallSub(SetIcon)
+			Gui.fmMSG..Show
+		F.Intrinsic.Control.Else
+			F.Intrinsic.Control.End
+		F.Intrinsic.Control.EndIf
+		
+	F.Intrinsic.Control.CaseElse
+		F.Intrinsic.Control.End
+F.Intrinsic.Control.EndSelect
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: GCG_5182_CLOSE_WO.g2u {0}{0}Subroutine: {1}{0}Error Occurred {2} with description {3}",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(fmMSG_UnLoad)
+Function.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.cmdYES_Click.Start
+F.Intrinsic.Control.SetErrorHandler("cmdYES_Click_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+V.Local.sDate.Declare(String,"")
+
+F.ODBC.Connection!con.OpenCompanyConnection
+F.Intrinsic.String.Format(V.Ambient.Date,"YYYYMMDD",V.Local.sDate)
+
+F.Data.DataTable.Create("Job")
+F.Data.DataTable.AddColumn("Job","Job",String)
+F.Data.DataTable.AddColumn("Job","Suffix",String)
+
+F.Data.DataTable.AddRow("Job","Job",V.Global.sJOB.Trim,"Suffix",V.Global.sSUFFIX.Trim)
+
+F.Data.DataTable.SaveToDB("Job","con","GCG_5182_WO_CLOSE","JOB*!*SUFFIX",256,"JOB@!@JOB*!*SUFFIX@!@SUFFIX")
+
+F.Data.DataTable.Close("Job")
+
+F.ODBC.Connection!Con.Close
+
+F.Intrinsic.Control.CallSub(fmMSG_UnLoad)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("cmdYES_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: GCG_5182_CLOSE_WO.g2u {0}{0}Subroutine: {1}{0}Error Occurred {2} with description {3}",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(fmMSG_UnLoad)
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmdYES_Click.End
+
+Program.Sub.cmdNO_Click.Start
+F.Intrinsic.Control.SetErrorHandler("cmdNO_Click_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+
+F.Intrinsic.Control.CallSub(fmMSG_Unload)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("cmdNO_Click_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: GCG_5182_CLOSE_WO.g2u {0}{0}Subroutine: {1}{0}Error Occurred {2} with description {3}",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(fmMSG_UnLoad)
+Function.Intrinsic.Control.EndIf
+Program.Sub.cmdNO_Click.End
+
+Program.Sub.SetIcon.Start
+F.Intrinsic.Control.SetErrorHandler("SetIcon_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+V.Local.sForm.Declare(String,"")
+V.Local.bExists.Declare(Boolean,False)
+V.Local.sIcon.Declare(String,"")
+V.Local.iCounter.Declare(Long,0)
+
+F.Intrinsic.String.Build("{0}\ART\gss2.ico",V.Caller.GlobalDir,v.Local.sIcon)
+F.Intrinsic.File.Exists(V.Local.sIcon, V.Local.bExists)
+F.Intrinsic.Control.If(V.Local.bExists.Not)
+    F.Intrinsic.String.Build("{0}\GAB\GAS\gss2.ico",V.Caller.PluginsDir,v.Local.sIcon)
+    F.Intrinsic.File.Exists(V.Local.sIcon, V.Local.bExists)
+    F.Intrinsic.Control.If(V.Local.bExists.Not)
+        F.Intrinsic.Control.ExitSub
+    F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.UI.GetFormList(V.Local.sForm)
+F.Intrinsic.String.Split(V.Local.sForm, "*!*", V.Local.sForm)
+
+F.Intrinsic.Control.For(V.Local.iCounter, 0, V.Local.sForm.UBound, 1)
+    Gui.[V.Local.sForm(V.Local.iCounter)]..Icon(V.Local.sIcon)
+F.Intrinsic.Control.Next(V.Local.iCounter)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("SetIcon_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.String.Build("Project: GCG_5182_CLOSE_WO.g2u {0}{0}Subroutine: {1}{0}Error Occurred {2} with description {3}",V.Ambient.NewLine,V.Ambient.CurrentSubroutine,V.Ambient.ErrorNumber,V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+Function.Intrinsic.Control.EndIf
+Program.Sub.SetIcon.End
+
+Program.Sub.fmMSG_UnLoad.Start
+F.Intrinsic.Control.SetErrorHandler("SetIcon_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String,"")
+
+F.Intrinsic.Control.If(V.ODBC.Con.State,=,1)
+	F.ODBC.Connection!Con.Close
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("SetIcon_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	F.Intrinsic.Control.End
+Function.Intrinsic.Control.EndIf
+Program.Sub.fmMSG_UnLoad.End
